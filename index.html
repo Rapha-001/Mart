@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniMart</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+
+    <!-- PWA / Standalone meta tags -->
+    <meta name="theme-color" content="#6c00ea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="UniMart">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <!-- Firebase v8 compat (matches your existing firebase.js) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+</head>
+<body>
+
+    <!-- ── Install Prompt Banner ──────────────────────── -->
+    <div id="installBanner" class="install-banner hidden">
+        <div class="install-banner-icon">
+            <i data-feather="aperture"></i>
+        </div>
+        <div class="install-banner-text">
+            <strong>Add UniMart to Home Screen</strong>
+            <span>Fast access, works offline</span>
+        </div>
+        <button class="install-banner-btn" id="installAccept">Install</button>
+        <button class="install-banner-dismiss" id="installDismiss">
+            <i data-feather="x"></i>
+        </button>
+    </div>
+
+    <!-- ── Splash Screen ─────────────────────────────── -->
+    <div id="splashScreen" class="splash-screen">
+        <div class="splash-content">
+            <div class="splash-logo-ring">
+                <i data-feather="aperture"></i>
+            </div>
+            <h1 class="splash-title">
+                <span class="uni">Uni</span><span class="mart">Mart</span>
+            </h1>
+            <p class="splash-tagline">Student Marketplace</p>
+            <div class="splash-loader">
+                <div class="splash-loader-bar"></div>
+            </div>
+            <p class="splash-status" id="splashStatus">Connecting…</p>
+        </div>
+        <p class="splash-footer">University of Uyo</p>
+    </div>
+
+    <!-- ── Auth Modal ──────────────────────────────── -->
+    <div id="authModal" class="modal hidden">
+        <div class="modal-content slide-in auth-content">
+
+            <!-- Tabs -->
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tabLogin">Log In</button>
+                <button class="auth-tab" id="tabSignup">Sign Up</button>
+            </div>
+
+            <!-- Login Panel -->
+            <div id="panelLogin" class="auth-panel">
+                <p class="auth-subtitle">Welcome back 👋</p>
+                <input type="email"    id="loginEmail"    placeholder="Email address">
+                <input type="password" id="loginPassword" placeholder="Password">
+                <p id="loginError" class="auth-error hidden"></p>
+                <button id="loginBtn" class="auth-submit">Log In</button>
+            </div>
+
+            <!-- Signup Panel -->
+            <div id="panelSignup" class="auth-panel hidden">
+                <p class="auth-subtitle">Join UniMart 🎓</p>
+                <input type="text"     id="signupName"     placeholder="Full Name">
+                <input type="email"    id="signupEmail"    placeholder="Email address">
+                <input type="password" id="signupPassword" placeholder="Password (min 6 chars)">
+                <input type="tel"      id="signupPhone"    placeholder="WhatsApp Number (e.g. 2348012345678)">
+                <p id="signupError" class="auth-error hidden"></p>
+                <button id="signupBtn" class="auth-submit">Create Account</button>
+            </div>
+
+            <button id="authClose" class="auth-close-btn">Maybe later</button>
+        </div>
+    </div>
+
+    <!-- ── User Guide Modal ────────────────────────── -->
+    <div id="guideModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Welcome to UniMart!</h2>
+            <p>Your student marketplace at University of Uyo.</p>
+            <ul>
+                <li>Browse or search for items below.</li>
+                <li>Filter by category or price range.</li>
+                <li>Tap any item to see full details.</li>
+                <li>Sign up to list your own items.</li>
+            </ul>
+            <button id="closeGuide">Got it!</button>
+        </div>
+    </div>
+
+    <!-- ── Item Detail Overlay ─────────────────────── -->
+    <div id="itemOverlay" class="item-overlay hidden">
+        <div class="overlay-sheet">
+            <div class="overlay-drag-bar"></div>
+            <button class="overlay-close" id="overlayClose"><i data-feather="x"></i></button>
+            <div class="overlay-gallery" id="overlayGallery"></div>
+            <div class="gallery-dots" id="galleryDots"></div>
+            <div class="overlay-body">
+                <div class="overlay-top-row">
+                    <span class="overlay-badge" id="overlayBadge"></span>
+                    <span class="overlay-price" id="overlayPrice"></span>
+                </div>
+                <h2 class="overlay-title" id="overlayTitle"></h2>
+                <div class="overlay-meta" id="overlayMeta"></div>
+                <div class="overlay-seller">
+                    <div class="seller-avatar" id="sellerAvatar"></div>
+                    <div>
+                        <p class="seller-label">Seller</p>
+                        <p class="seller-name" id="overlaySeller"></p>
+                        <span class="overlay-seller-rating" id="overlaySellerRating" style="display:none"></span>
+                    </div>
+                </div>
+                <div class="overlay-desc-block">
+                    <p class="overlay-desc-label">Description</p>
+                    <p class="overlay-desc" id="overlayDesc"></p>
+                </div>
+                <button class="overlay-wa-btn" id="overlayWaBtn">
+                    <i data-feather="message-circle"></i> Chat on WhatsApp
+                </button>
+                <button class="overlay-report-btn" id="overlayReportBtn">
+                    <i data-feather="flag"></i> Report Listing
+                </button>
+
+                <!-- ── Reviews Section ───────────────────── -->
+                <div class="reviews-section">
+                    <div class="reviews-header">
+                        <p class="reviews-title">Reviews</p>
+                        <div class="reviews-avg" id="reviewsAvg" style="display:none">
+                            <span class="reviews-avg-stars" id="reviewsAvgStars"></span>
+                            <span class="reviews-avg-num" id="reviewsAvgNum"></span>
+                        </div>
+                    </div>
+
+                    <!-- Write a review (logged in, not owner) -->
+                    <div id="reviewForm" class="review-form hidden">
+                        <p class="review-form-label">Rate this item</p>
+                        <div class="star-input" id="starInput">
+                            <span class="star" data-val="1">★</span>
+                            <span class="star" data-val="2">★</span>
+                            <span class="star" data-val="3">★</span>
+                            <span class="star" data-val="4">★</span>
+                            <span class="star" data-val="5">★</span>
+                        </div>
+                        <textarea id="reviewText" class="review-textarea"
+                            placeholder="Share your experience (optional)…" rows="2"></textarea>
+                        <button class="review-submit-btn" id="reviewSubmitBtn">Post Review</button>
+                    </div>
+
+                    <!-- Login prompt -->
+                    <div id="reviewLoginPrompt" class="review-login-prompt hidden">
+                        <p>Log in to leave a review</p>
+                        <button class="review-login-btn" id="reviewLoginBtn">Log In</button>
+                    </div>
+
+                    <!-- Reviews list -->
+                    <div id="reviewsList" class="reviews-list">
+                        <p class="reviews-empty" id="reviewsEmpty">No reviews yet</p>
+                    </div>
+                </div>
+
+            </div><!-- overlay-body -->
+        </div><!-- overlay-sheet -->
+    </div><!-- item-overlay -->
+
+    <!-- ── Header ──────────────────────────────────── -->
+    <header>
+        <div class="header-logo">
+            <div class="logo-ring">
+                <span class="logo-icon"><i data-feather="aperture"></i></span>
+            </div>
+            <div class="logo-label">UNIUYO</div>
+        </div>
+        <div class="header-brand">
+            <h1><span class="uni">Uni</span><span class="mart">Mart</span></h1>
+            <p class="tagline">Student Marketplace</p>
+        </div>
+        <!-- User avatar / login button -->
+        <div class="header-user" id="headerUser">
+            <button class="notif-bell-btn" id="notifBellBtn" title="Announcements">
+                <i data-feather="bell"></i>
+                <span class="notif-dot hidden" id="notifDot"></span>
+            </button>
+            <button class="user-avatar-btn" id="userAvatarBtn">
+                <i data-feather="user"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ── Welcome Banner ────────────────────────────── -->
+    <div id="welcomeBanner" class="welcome-banner">
+        <button class="welcome-banner-close" id="welcomeBannerClose">
+            <i data-feather="chevron-up"></i>
+        </button>
+        <div class="welcome-banner-body" id="welcomeBannerBody">
+            <div class="welcome-banner-icon">🎓</div>
+            <div class="welcome-banner-text">
+                <strong>Welcome to UniMart!</strong>
+                <p>The official student marketplace for University of Uyo. Buy, sell and swap items with fellow students — books, electronics, food, clothing and more.</p>
+                <span class="welcome-banner-free">
+                    <i data-feather="zap"></i> Currently <b>100% free</b> to list items — enjoy it while it lasts!
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Announcements Sheet ───────────────────────── -->
+    <div id="notifOverlay" class="item-overlay hidden">
+        <div class="overlay-sheet notif-sheet">
+            <div class="overlay-drag-bar"></div>
+            <button class="overlay-close" id="notifClose">
+                <i data-feather="x"></i>
+            </button>
+            <div class="notif-header">
+                <i data-feather="bell"></i>
+                <h2>Announcements</h2>
+            </div>
+            <div id="notifList" class="notif-list">
+                <p class="notif-empty">No announcements yet</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Search Bar ───────────────────────────────── -->
+    <div class="search-wrap">
+        <div class="search-bar">
+            <i data-feather="search" class="search-prefix-icon"></i>
+            <input type="text" id="searchInput" placeholder="Search items…" autocomplete="off">
+            <button id="searchBtn" class="search-go" aria-label="Search">
+                <i data-feather="arrow-right"></i>
+            </button>
+        </div>
+        <button id="filterToggleBtn" class="filter-icon-btn" aria-label="Filters">
+            <i data-feather="sliders"></i>
+            <span class="filter-badge hidden" id="filterBadge"></span>
+        </button>
+    </div>
+
+    <!-- ── Category Chips ──────────────────────────── -->
+    <div class="chips-wrap">
+        <div class="chips-scroll">
+            <button class="chip active" data-cat="all">All</button>
+            <button class="chip" data-cat="food">🍔 Food</button>
+            <button class="chip" data-cat="books">📚 Books</button>
+            <button class="chip" data-cat="electronics">📱 Electronics</button>
+            <button class="chip" data-cat="clothing">👗 Clothing</button>
+            <button class="chip" data-cat="beauty">💄 Beauty</button>
+            <button class="chip" data-cat="stationery">✏️ Stationery</button>
+            <button class="chip" data-cat="housing">🏠 Housing</button>
+            <button class="chip" data-cat="services">🛠️ Services</button>
+            <button class="chip" data-cat="other">📦 Other</button>
+        </div>
+    </div>
+
+    <!-- ── Filter Panel ─────────────────────────────── -->
+    <div id="filterPanel" class="filter-panel hidden">
+        <div class="filter-panel-inner">
+            <div class="filter-section">
+                <p class="filter-panel-title"><i data-feather="tag"></i> Price Range</p>
+                <div class="price-chips">
+                    <button class="price-chip active" data-price="all">All</button>
+                    <button class="price-chip" data-price="0-1000">Under ₦1k</button>
+                    <button class="price-chip" data-price="1000-5000">₦1k–₦5k</button>
+                    <button class="price-chip" data-price="5000-20000">₦5k–₦20k</button>
+                    <button class="price-chip" data-price="20000+">₦20k+</button>
+                </div>
+            </div>
+            <div class="filter-section">
+                <p class="filter-panel-title"><i data-feather="bar-chart-2"></i> Sort By</p>
+                <div class="price-chips">
+                    <button class="sort-chip active" data-sort="newest">Newest</button>
+                    <button class="sort-chip" data-sort="price-asc">Price ↑</button>
+                    <button class="sort-chip" data-sort="price-desc">Price ↓</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Active Filters Bar ──────────────────────── -->
+    <div id="activeFilters" class="active-filters hidden">
+        <span id="activeFilterText"></span>
+        <button id="clearFilters">✕ Clear</button>
+    </div>
+
+    <!-- ── Results Count ────────────────────────────── -->
+    <div id="resultsCount" class="results-count"></div>
+
+    <!-- ── Add Item Form Modal ──────────────────────── -->
+    <div id="addItemForm" class="modal hidden">
+        <div class="modal-content slide-in add-form-content">
+            <h2>List an Item</h2>
+
+            <!-- Seller info banner (auto-filled from profile) -->
+            <div class="seller-info-banner" id="sellerInfoBanner">
+                <div class="seller-banner-avatar" id="bannerAvatar"></div>
+                <div>
+                    <p class="banner-name" id="bannerName"></p>
+                    <p class="banner-phone" id="bannerPhone"></p>
+                </div>
+                <i data-feather="check-circle" class="banner-check"></i>
+            </div>
+
+            <label class="img-upload-label" for="itemImages">
+                <div class="img-upload-box">
+                    <i data-feather="camera"></i>
+                    <span>Tap to add photos</span>
+                    <small>Up to 4 images</small>
+                </div>
+            </label>
+            <input type="file" id="itemImages" accept="image/*" multiple style="display:none">
+            <div class="img-preview-row" id="imgPreviewRow"></div>
+
+            <input type="text"   id="itemName"  placeholder="Item Name" required>
+            <input type="number" id="itemPrice" placeholder="Price (₦)" required>
+            <select id="itemCategory">
+                <option value="" disabled selected>Select Category</option>
+                <option value="food">🍔 Food & Snacks</option>
+                <option value="books">📚 Books & Notes</option>
+                <option value="electronics">📱 Electronics</option>
+                <option value="clothing">👗 Clothing</option>
+                <option value="beauty">💄 Beauty & Grooming</option>
+                <option value="stationery">✏️ Stationery</option>
+                <option value="housing">🏠 Housing</option>
+                <option value="services">🛠️ Services</option>
+                <option value="other">📦 Other</option>
+            </select>
+
+            <div class="form-row-2">
+                <select id="itemCondition">
+                    <option value="" disabled selected>Condition</option>
+                    <option value="new">✨ New</option>
+                    <option value="fairly-used">👍 Fairly Used</option>
+                    <option value="used">📦 Used</option>
+                </select>
+                <select id="itemLocation">
+                    <option value="" disabled selected>Location</option>
+                    <option value="main">🏛️ Main Campus</option>
+                    <option value="annex">🏫 Annex</option>
+                    <option value="town">🏙️ Town Camp</option>
+                </select>
+            </div>
+
+            <textarea id="itemDesc" placeholder="Describe your item… (size, details, etc.)" rows="3"></textarea>
+
+            <div class="form-buttons">
+                <button id="submitItem">Post Item</button>
+                <button id="cancelItem">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Marketplace ──────────────────────────────── -->
+    <main id="mainGrid">
+        <!-- Loading skeleton -->
+        <div id="loadingState" class="loading-state">
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+        </div>
+
+        <section id="marketplace"></section>
+
+        <!-- Empty state -->
+        <div id="emptyState" class="empty-state hidden">
+            <div class="empty-icon-wrap">
+                <i data-feather="shopping-bag"></i>
+            </div>
+            <p class="empty-title">No items yet</p>
+            <span class="empty-sub">Be the first to list something!</span>
+            <button class="empty-cta" id="emptyAddBtn">+ List an Item</button>
+        </div>
+
+        <!-- No results (when search/filter returns nothing) -->
+        <div id="noResultsState" class="empty-state hidden">
+            <div class="empty-icon-wrap">
+                <i data-feather="search"></i>
+            </div>
+            <p class="empty-title">Nothing found</p>
+            <span class="empty-sub">Try a different search or filter</span>
+        </div>
+    </main>
+
+    <!-- ── Profile Sheet ─────────────────────────────── -->
+    <div id="profileOverlay" class="item-overlay hidden">
+        <div class="overlay-sheet profile-sheet">
+            <div class="overlay-drag-bar"></div>
+            <button class="overlay-close" id="profileClose">
+                <i data-feather="x"></i>
+            </button>
+
+            <!-- Profile header -->
+            <div class="profile-header">
+                <div class="profile-avatar-wrap">
+                    <div class="profile-avatar-lg" id="profileAvatarLg"></div>
+                    <label class="profile-avatar-edit" for="profilePicInput" title="Change photo">
+                        <i data-feather="camera"></i>
+                    </label>
+                    <input type="file" id="profilePicInput" accept="image/*" style="display:none">
+                </div>
+                <div class="profile-header-info">
+                    <h2 class="profile-display-name" id="profileDisplayName"></h2>
+                    <p class="profile-email" id="profileEmail"></p>
+                </div>
+            </div>
+
+            <!-- Trust nudge — shown only when no photo set -->
+            <div class="profile-trust-nudge" id="profileTrustNudge">
+                <i data-feather="shield"></i>
+                <p>Add a profile photo — buyers are <b>3× more likely</b> to contact sellers with a real photo.</p>
+            </div>
+
+            <!-- Stats row -->
+            <div class="profile-stats-row">
+                <div class="profile-stat">
+                    <span class="profile-stat-num" id="profileListingsCount">0</span>
+                    <span class="profile-stat-label">Listings</span>
+                </div>
+                <div class="profile-stat-divider"></div>
+                <div class="profile-stat">
+                    <span class="profile-stat-num" id="profileViews">0</span>
+                    <span class="profile-stat-label">Total Views</span>
+                </div>
+            </div>
+
+            <!-- Edit form -->
+            <div class="profile-body">
+                <p class="profile-section-title">Edit Profile</p>
+
+                <div class="profile-field">
+                    <label>Full Name</label>
+                    <input type="text" id="profileNameInput" placeholder="Your name">
+                </div>
+                <div class="profile-field">
+                    <label>WhatsApp Number</label>
+                    <input type="tel" id="profilePhoneInput" placeholder="e.g. 2348012345678">
+                </div>
+
+                <p id="profileSaveMsg" class="profile-save-msg hidden"></p>
+                <button class="profile-save-btn" id="profileSaveBtn">
+                    Save Changes
+                </button>
+
+                <p class="profile-section-title" style="margin-top:20px">Account</p>
+                <p class="profile-member-since" id="profileMemberSince"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Feedback Modal ────────────────────────────── -->
+    <div id="feedbackModal" class="item-overlay hidden">
+        <div class="overlay-sheet feedback-sheet">
+            <div class="overlay-drag-bar"></div>
+            <button class="overlay-close" id="feedbackClose">
+                <i data-feather="x"></i>
+            </button>
+
+            <div class="feedback-header">
+                <div class="feedback-header-icon">
+                    <i data-feather="message-square"></i>
+                </div>
+                <div>
+                    <h2 class="feedback-title">Send Feedback</h2>
+                    <p class="feedback-subtitle">Help us improve UniMart</p>
+                </div>
+            </div>
+
+            <div class="feedback-body">
+                <!-- Type selector -->
+                <p class="feedback-label">What kind of feedback?</p>
+                <div class="feedback-type-row">
+                    <button class="feedback-type-btn active" data-type="suggestion">
+                        💡 Suggestion
+                    </button>
+                    <button class="feedback-type-btn" data-type="bug">
+                        🐛 Bug Report
+                    </button>
+                    <button class="feedback-type-btn" data-type="other">
+                        💬 Other
+                    </button>
+                </div>
+
+                <!-- Message -->
+                <p class="feedback-label" style="margin-top:16px">Your message</p>
+                <textarea id="feedbackMessage" class="feedback-textarea"
+                    placeholder="Tell us what's on your mind…" rows="4"></textarea>
+
+                <p id="feedbackStatus" class="feedback-status hidden"></p>
+
+                <button class="feedback-submit-btn" id="feedbackSubmitBtn">
+                    <i data-feather="send"></i> Send Feedback
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Sidebar Overlay ───────────────────────────── -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+    <!-- ── Sidebar ──────────────────────────────────── -->
+    <div id="sidebar" class="sidebar">
+
+        <!-- User info at top -->
+        <div class="sidebar-header">
+            <div class="sidebar-avatar" id="sidebarAvatar">
+                <i data-feather="user"></i>
+            </div>
+            <div class="sidebar-user-info">
+                <p class="sidebar-user-name" id="sidebarName">Guest</p>
+                <p class="sidebar-user-email" id="sidebarEmail">Not logged in</p>
+            </div>
+            <button class="sidebar-close-btn" id="sidebarClose">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <!-- Nav items -->
+        <nav class="sidebar-nav">
+            <a href="#" class="sidebar-item" id="menuProfile">
+                <div class="sidebar-item-icon"><i data-feather="user"></i></div>
+                <span>My Profile</span>
+                <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
+            </a>
+            <a href="#" class="sidebar-item" id="menuAddItem">
+                <div class="sidebar-item-icon"><i data-feather="plus-circle"></i></div>
+                <span>List an Item</span>
+                <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
+            </a>
+            <a href="#" class="sidebar-item" id="menuMyListings">
+                <div class="sidebar-item-icon"><i data-feather="package"></i></div>
+                <span>My Listings</span>
+                <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
+            </a>
+            <a href="#" class="sidebar-item" id="menuFeedback">
+                <div class="sidebar-item-icon"><i data-feather="message-square"></i></div>
+                <span>Send Feedback</span>
+                <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
+            </a>
+        </nav>
+
+        <div class="sidebar-divider"></div>
+
+        <!-- Auth actions -->
+        <div class="sidebar-footer">
+            <a href="#" class="sidebar-item sidebar-login hidden" id="menuLogin">
+                <div class="sidebar-item-icon"><i data-feather="log-in"></i></div>
+                <span>Log In / Sign Up</span>
+                <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
+            </a>
+            <a href="#" class="sidebar-item sidebar-logout hidden" id="menuLogout">
+                <div class="sidebar-item-icon logout-icon"><i data-feather="log-out"></i></div>
+                <span class="logout-text">Log Out</span>
+                <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
+            </a>
+        </div>
+
+    </div>
+
+    <!-- ── Bottom Navigation ────────────────────────── -->
+    <div class="bottom-nav-container">
+        <div class="bottom-nav">
+            <button class="nav-btn" id="navHome">
+                <i data-feather="home"></i>
+                <span>Home</span>
+            </button>
+            <button class="nav-btn nav-center" id="navAdd">
+                <i data-feather="plus"></i>
+            </button>
+            <button class="nav-btn" id="navMenu">
+                <i data-feather="menu"></i>
+                <span>Menu</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Scripts: order matters -->
+    <script src="js/firebase.js"></script>
+    <script src="js/cloudinary.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/marketplace.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/ui.js"></script>
+</body>
+</html>
