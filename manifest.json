@@ -3,14 +3,14 @@ const CACHE_NAME = "unimart-v4";
 const assetsToCache = [
   "/",
   "/index.html",
-  "/css/style.css",
+  "style.css",
   "/manifest.json",
-  "/js/app.js",
-  "/js/firebase.js",
-  "/js/cloudinary.js",
-  "/js/marketplace.js",
-  "/js/auth.js",
-  "/js/ui.js"
+  "/app.js",
+  "/firebase.js",
+  "/cloudinary.js",
+  "/marketplace.js",
+  "/auth.js",
+  "/ui.js"
 ];
 
 self.addEventListener("install", event => {
