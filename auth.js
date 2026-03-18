@@ -25,15 +25,22 @@ function hideSplash() {
   }, 400);
 }
 
-// Safety net — dismiss splash after 8s no matter what
+// Safety net — dismiss splash after 4s no matter what
 setTimeout(() => {
   setSplashStatus('Taking longer than usual…');
   hideSplash();
-}, 8000);
+}, 4000);
 
 // ── Auth state observer ───────────────────────────────
-// Fires immediately on load (cached session) and on every change.
-auth.onAuthStateChanged(async (user) => {
+// Only starts after firebase.js confirms maintenance check passed.
+function startAuth() {
+  // Load items immediately — don't wait for auth.
+  // Guests see listings right away; auth just adds user-specific UI on top.
+  if (typeof window.loadItems === 'function') {
+    window.loadItems();
+  }
+
+  auth.onAuthStateChanged(async (user) => {
   if (user) {
     setSplashStatus('Loading your profile…');
     // Fetch extended profile from Firestore
@@ -46,7 +53,10 @@ auth.onAuthStateChanged(async (user) => {
         name:     profile.name  || user.displayName || 'User',
         email:    user.email,
         phone:    profile.phone || '',
-        photoURL: profile.photoURL || null
+        photoURL: profile.photoURL || null,
+        role:     profile.role  || 'buyer',
+        sellerPro: profile.sellerPro || false,
+        sellingMode: profile.sellingMode || profile.role === 'seller',
       };
     } catch (e) {
       // Offline fallback — use whatever Firebase Auth cached
@@ -55,7 +65,9 @@ auth.onAuthStateChanged(async (user) => {
         name:     user.displayName || 'User',
         email:    user.email,
         phone:    '',
-        photoURL: null
+        photoURL: null,
+        role:     'buyer',
+        sellerPro: false,
       };
     }
 
@@ -64,6 +76,12 @@ auth.onAuthStateChanged(async (user) => {
     if (typeof window.loadItems === 'function') window.loadItems();
     hideSplash();
 
+    // Show role picker if existing user has no role set
+    const profileSnap = await db.collection('users').doc(user.uid).get();
+    if (profileSnap.exists && !profileSnap.data().role) {
+      showRolePicker();
+    }
+
   } else {
     window.currentUser = null;
     setSplashStatus('Ready');
@@ -71,7 +89,15 @@ auth.onAuthStateChanged(async (user) => {
     if (typeof window.loadItems === 'function') window.loadItems();
     hideSplash();
   }
-});
+  }); // end onAuthStateChanged
+} // end startAuth
+
+// Start auth when firebase.js signals app is ready
+if (window._appReady) {
+  startAuth();
+} else {
+  document.addEventListener('appReady', startAuth);
+}
 
 // ── Called when a user is confirmed logged in ─────────
 function onUserLoggedIn(user) {
@@ -107,6 +133,43 @@ function onUserLoggedIn(user) {
     document.getElementById('guideModal').classList.remove('hidden');
     localStorage.setItem('unimart_guide_seen', '1');
   }
+
+  // Load favorites and inbox badge (from inbox.js)
+  if (typeof window._loadUserFavorites === 'function') {
+    window._loadUserFavorites(user.uid);
+  }
+  if (typeof window.startInboxBadgeListener === 'function') {
+    window.startInboxBadgeListener();
+  }
+  // Start notification listener (from notifications.js)
+  if (typeof window.startNotifListener === 'function') {
+    window.startNotifListener();
+  }
+  // Ask for push permission after 3s (non-intrusive)
+  setTimeout(() => {
+    if (typeof window.initPush === 'function') window.initPush();
+  }, 3000);
+
+  // Show/hide role-based sidebar items
+  const isSeller = user.role === 'seller';
+  const isBuyer  = user.role === 'buyer';
+  const el = id => document.getElementById(id);
+
+  if (el('menuSellerDash'))  el('menuSellerDash').classList.toggle('hidden', !isSeller);
+  if (el('menuBuyerDash'))   el('menuBuyerDash').classList.toggle('hidden', !isBuyer);
+  if (el('menuSellingMode')) el('menuSellingMode').classList.toggle('hidden', !isBuyer);
+
+  // Switch to correct nav layout
+  if (typeof window.switchNav === 'function') {
+    // Sellers always get seller nav
+    // Buyers in selling mode get seller nav
+    // Buyers not in selling mode get buyer nav
+    const useSellerNav = user.role === 'seller' || user.sellingMode === true;
+    window.switchNav(useSellerNav ? 'seller' : 'buyer');
+  }
+
+  // Update selling mode toggle label
+  if (isBuyer) updateSellingModeLabel();
 }
 
 // ── Called when logged out ────────────────────────────
@@ -122,11 +185,8 @@ function onUserLoggedOut() {
   const menuLogout = document.getElementById('menuLogout');
   if (menuLogout) menuLogout.classList.add('hidden');
 
-  const seenGuide = localStorage.getItem('unimart_guide_seen');
-  if (!seenGuide) {
-    document.getElementById('guideModal').classList.remove('hidden');
-    localStorage.setItem('unimart_guide_seen', '1');
-  }
+  // Switch to guest nav
+  if (typeof window.switchNav === 'function') window.switchNav(null);
 }
 
 // ── Sign Up ───────────────────────────────────────────
@@ -135,6 +195,7 @@ async function handleSignup() {
   const email    = document.getElementById('signupEmail').value.trim();
   const password = document.getElementById('signupPassword').value;
   const phone    = document.getElementById('signupPhone').value.trim();
+  const role     = document.getElementById('signupRole')?.value || 'buyer';
   const errEl    = document.getElementById('signupError');
 
   if (!name || !email || !password || !phone) {
@@ -143,9 +204,8 @@ async function handleSignup() {
   if (password.length < 6) {
     return showAuthError(errEl, 'Password must be at least 6 characters.');
   }
-  // Validate phone — must be digits only, 10-15 chars (handles 08012345678 and 2348012345678)
   if (!/^\d{10,15}$/.test(phone)) {
-    return showAuthError(errEl, 'Enter a valid WhatsApp number (digits only, e.g. 08012345678 or 2348012345678).');
+    return showAuthError(errEl, 'Enter a valid WhatsApp number (digits only, e.g. 08012345678).');
   }
 
   const btn = document.getElementById('signupBtn');
@@ -155,20 +215,18 @@ async function handleSignup() {
 
   try {
     const cred = await auth.createUserWithEmailAndPassword(email, password);
-
-    // Update Firebase Auth display name
     await cred.user.updateProfile({ displayName: name });
 
-    // Save full profile to Firestore — credits: 10 free on signup
     await db.collection('users').doc(cred.user.uid).set({
       name,
       email,
       phone,
-      credits:   10,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      role,
+      sellerPro:    false,
+      sellingMode:  role === 'seller', // sellers start in selling mode
+      credits:      10,
+      createdAt:    firebase.firestore.FieldValue.serverTimestamp()
     });
-
-    // Auth state observer will handle the rest
 
   } catch (err) {
     showAuthError(errEl, friendlyAuthError(err.code));
@@ -282,3 +340,97 @@ document.addEventListener('DOMContentLoaded', () => {
   window.showAuthModal  = showAuthModal;
   window.handleLogout   = handleLogout;
 });
+
+// ── Role selector on signup form ──────────────────────
+function selectRole(role) {
+  document.getElementById('signupRole').value = role;
+  document.getElementById('roleOptBuyer').classList.toggle('selected', role === 'buyer');
+  document.getElementById('roleOptSeller').classList.toggle('selected', role === 'seller');
+}
+window.selectRole = selectRole;
+
+// ── Selling mode toggle (buyer → can list) ────────────
+function updateSellingModeLabel() {
+  const active = window.currentUser?.sellingMode;
+  const icon   = document.getElementById('sellingModeIcon');
+  const label  = document.getElementById('sellingModeLabel');
+  const desc   = document.getElementById('sellingModeDesc');
+  if (icon)  icon.setAttribute('data-feather', active ? 'toggle-right' : 'toggle-left');
+  if (label) label.textContent = active ? 'Selling Mode: ON' : 'Switch to Selling Mode';
+  if (desc)  desc.textContent  = active ? 'Tap to stop selling' : 'Enable to list items';
+  if (icon)  feather.replace();
+}
+window.updateSellingModeLabel = updateSellingModeLabel;
+
+window.toggleSellingMode = async function() {
+  if (!window.currentUser) return;
+  const newMode = !window.currentUser.sellingMode;
+  window.currentUser.sellingMode = newMode;
+  try {
+    await db.collection('users').doc(window.currentUser.uid)
+      .update({ sellingMode: newMode });
+    updateSellingModeLabel();
+    // Switch nav based on new mode
+    if (typeof window.switchNav === 'function') {
+      window.switchNav(newMode ? 'seller' : 'buyer');
+    }
+    if (typeof window.loadItems === 'function') window.loadItems();
+  } catch(e) { console.error(e); }
+};
+
+// ── Role picker for existing users ────────────────────
+let _pickedRole = null;
+
+function showRolePicker() {
+  const modal = document.getElementById('rolePickerModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+window.pickRole = function(role) {
+  _pickedRole = role;
+  document.getElementById('rolePickBuyer')?.classList.toggle('selected', role === 'buyer');
+  document.getElementById('rolePickSeller')?.classList.toggle('selected', role === 'seller');
+  const btn = document.getElementById('rolePickConfirmBtn');
+  if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+};
+
+window.confirmRolePick = async function() {
+  if (!_pickedRole || !window.currentUser) return;
+  const btn = document.getElementById('rolePickConfirmBtn');
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+
+  try {
+    await db.collection('users').doc(window.currentUser.uid).update({
+      role:        _pickedRole,
+      sellingMode: _pickedRole === 'seller',
+    });
+
+    window.currentUser.role        = _pickedRole;
+    window.currentUser.sellingMode = _pickedRole === 'seller';
+
+    // Close modal
+    const modal = document.getElementById('rolePickerModal');
+    if (modal) modal.classList.add('hidden');
+    document.body.style.overflow = '';
+
+    // Switch to correct nav
+    if (typeof window.switchNav === 'function') {
+      window.switchNav(_pickedRole === 'seller' ? 'seller' : 'buyer');
+    }
+
+    // Update sidebar role items
+    const isSeller = _pickedRole === 'seller';
+    const isBuyer  = _pickedRole === 'buyer';
+    document.getElementById('menuSellerDash')?.classList.toggle('hidden', !isSeller);
+    document.getElementById('menuBuyerDash')?.classList.toggle('hidden', !isBuyer);
+    document.getElementById('menuSellingMode')?.classList.toggle('hidden', !isBuyer);
+
+    if (isBuyer) updateSellingModeLabel();
+
+  } catch(e) {
+    console.error(e);
+    if (btn) { btn.textContent = 'Continue →'; btn.disabled = false; }
+  }
+};

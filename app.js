@@ -5,11 +5,16 @@ let activeCategory   = 'all';
 let activePriceRange = 'all';
 let activeSort       = 'newest';
 let searchQuery      = '';
-let myListingsUid    = null; // set when user taps "My Listings", filters by sellerUid
+let myListingsUid    = null;
+let activeLocation   = 'all'; // location filter: 'all' | 'main' | 'annex' | 'town'
+
+// Global item cache so inbox.js can find item data without re-querying
+window.itemCache = {};
+
+// Global favorites set — populated after login by inbox.js
+window.userFavorites = new Set();
 
 // ── Service Worker ────────────────────────────────────
-// Only register on production (HTTPS) — SW cannot run reliably
-// on local dev servers over HTTP
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./service-worker.js')

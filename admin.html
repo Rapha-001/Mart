@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>UniMart Admin</title>
+<script src="https://unpkg.com/feather-icons"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0a0014;--surface:#12001f;--card:#1a0030;
+  --border:rgba(108,0,234,0.25);--purple:#6c00ea;
+  --text:#f0eaff;--muted:rgba(240,234,255,0.55);--muted2:rgba(240,234,255,0.28);
+  --green:#22c55e;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0a0014,#12001f);}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:40px 32px;width:100%;max-width:380px;text-align:center;}
+.login-logo{font-size:48px;margin-bottom:16px;}
+.login-title{font-size:24px;font-weight:800;margin-bottom:4px;}
+.login-title span{color:var(--purple);}
+.login-sub{font-size:13px;color:var(--muted);margin-bottom:28px;}
+.login-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:10px;padding:13px 16px;color:var(--text);font-size:15px;outline:none;margin-bottom:12px;}
+.login-input:focus{border-color:var(--purple);}
+.login-input::placeholder{color:var(--muted2);}
+.login-btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--purple),#d400d4);border:none;border-radius:12px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;}
+.login-err{font-size:12px;color:var(--red);margin-bottom:10px;display:none;}
+#adminApp{display:none;min-height:100vh;}
+.admin-header{position:sticky;top:0;z-index:100;background:rgba(10,0,20,0.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;}
+.admin-logo{font-size:18px;font-weight:800;}
+.admin-logo span{color:var(--purple);}
+.admin-logo small{font-size:11px;color:var(--muted);margin-left:6px;font-weight:400;}
+.admin-signout{background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:var(--red);padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;}
+.admin-tabs{display:flex;overflow-x:auto;gap:4px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface);scrollbar-width:none;}
+.admin-tabs::-webkit-scrollbar{display:none;}
+.admin-tab{padding:8px 16px;border-radius:100px;border:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;background:var(--card);color:var(--muted);flex-shrink:0;transition:all 0.15s;}
+.admin-tab.active{background:var(--purple);color:#fff;}
+.admin-content{padding:16px 16px 80px;max-width:900px;margin:0 auto;}
+.stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px;}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;}
+.stat-num{font-size:32px;font-weight:800;color:var(--purple);line-height:1;}
+.stat-label{font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:0.06em;}
+.section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 10px;}
+.admin-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;}
+.admin-card-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,var(--purple),#d400d4);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;}
+.admin-card-img{width:50px;height:50px;border-radius:10px;flex-shrink:0;background:var(--surface) no-repeat center/cover;display:flex;align-items:center;justify-content:center;font-size:20px;}
+.admin-card-info{flex:1;overflow:hidden;}
+.admin-card-title{font-size:14px;font-weight:700;margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.admin-card-sub{font-size:12px;color:var(--muted);margin:0;}
+.admin-card-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:700;}
+.badge-buyer{background:rgba(59,130,246,0.12);color:var(--blue);}
+.badge-seller{background:rgba(108,0,234,0.15);color:#c084fc;}
+.badge-pro{background:rgba(245,158,11,0.15);color:var(--amber);}
+.badge-verified{background:rgba(34,197,94,0.12);color:var(--green);}
+.badge-banned{background:rgba(239,68,68,0.12);color:var(--red);}
+.badge-pending{background:rgba(245,158,11,0.12);color:var(--amber);}
+.badge-active{background:rgba(34,197,94,0.12);color:var(--green);}
+.badge-sold{background:rgba(239,68,68,0.12);color:var(--red);}
+.btn{padding:6px 14px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:opacity 0.15s;}
+.btn:active{opacity:0.8;}
+.btn-danger{background:rgba(239,68,68,0.15);color:var(--red);}
+.btn-success{background:rgba(34,197,94,0.15);color:var(--green);}
+.btn-primary{background:var(--purple);color:#fff;}
+.btn-amber{background:rgba(245,158,11,0.15);color:var(--amber);}
+.btn-ghost{background:rgba(255,255,255,0.06);color:var(--muted);}
+.maintenance-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.toggle-title{font-size:16px;font-weight:800;}
+.toggle-switch{position:relative;width:52px;height:28px;background:#333;border-radius:100px;cursor:pointer;transition:background 0.2s;border:none;}
+.toggle-switch.on{background:var(--red);}
+.toggle-switch::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform 0.2s;}
+.toggle-switch.on::after{transform:translateX(24px);}
+.a-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);font-size:13px;font-family:inherit;resize:none;outline:none;margin-bottom:10px;}
+.a-input:focus{border-color:var(--purple);}
+.a-input::placeholder{color:var(--muted2);}
+.report-card{background:var(--card);border:1px solid rgba(239,68,68,0.25);border-radius:12px;padding:14px 16px;margin-bottom:10px;}
+.revenue-big{background:linear-gradient(135deg,var(--purple),#d400d4);border-radius:16px;padding:24px;text-align:center;margin-bottom:16px;}
+.revenue-num{font-size:42px;font-weight:800;color:#fff;}
+.revenue-label{font-size:12px;color:rgba(255,255,255,0.7);margin-top:4px;}
+.admin-empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:13px;}
+.spinner{width:20px;height:20px;border:2px solid rgba(255,255,255,0.15);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.filter-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.filter-chip{padding:6px 14px;border-radius:100px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;}
+.filter-chip.active{background:var(--purple);color:#fff;border-color:var(--purple);}
+.toast-msg{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;color:var(--green);z-index:9999;display:none;white-space:nowrap;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">🔐</div>
+    <h1 class="login-title">Uni<span>Mart</span></h1>
+    <p class="login-sub">Admin Panel — Authorised Access Only</p>
+    <p class="login-err" id="loginErr"></p>
+    <input class="login-input" type="email" id="adminEmail" placeholder="Admin email" onkeydown="if(event.key==='Enter')adminLogin()"/>
+    <input class="login-input" type="password" id="adminPass" placeholder="Password" onkeydown="if(event.key==='Enter')adminLogin()"/>
+    <button class="login-btn" onclick="adminLogin()">Enter Admin Panel →</button>
+  </div>
+</div>
+
+<div id="adminApp">
+  <div class="admin-header">
+    <div class="admin-logo">Uni<span>Mart</span> <small>Admin</small></div>
+    <button class="admin-signout" onclick="adminSignOut()">Sign Out</button>
+  </div>
+  <div class="admin-tabs" id="adminTabs">
+    <button class="admin-tab active" onclick="switchTab('overview',this)">📊 Overview</button>
+    <button class="admin-tab" onclick="switchTab('users',this)">👥 Users</button>
+    <button class="admin-tab" onclick="switchTab('listings',this)">📦 Listings</button>
+    <button class="admin-tab" onclick="switchTab('reports',this)">🚩 Reports</button>
+    <button class="admin-tab" onclick="switchTab('announcements',this)">📢 Announce</button>
+    <button class="admin-tab" onclick="switchTab('maintenance',this)">🔧 Maintenance</button>
+    <button class="admin-tab" onclick="switchTab('revenue',this)">₦ Revenue</button>
+  </div>
+  <div class="admin-content" id="adminContent">
+    <div class="admin-empty"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<div class="toast-msg" id="toastMsg"></div>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey:"AIzaSyCn3zA6AuF4K25gAPPopl1rN3zglw6V9mQ",
+  authDomain:"mart-b581e.firebaseapp.com",
+  projectId:"mart-b581e",
+  storageBucket:"mart-b581e.firebasestorage.app",
+  messagingSenderId:"227151575294",
+  appId:"1:227151575294:web:c4162c3d05dbac5a264daf"
+};
+
+// ⚠️ Set this to YOUR email address
+const ADMIN_EMAIL = 'raphaelakpabio360@gmail.com';
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+auth.onAuthStateChanged(async user => {
+  if (!user) return; // not logged in — stay on login screen
+
+  // Check admin flag in Firestore OR email match
+  try {
+    const snap = await db.collection('users').doc(user.uid).get();
+    const isAdmin = (snap.exists && snap.data().isAdmin === true) || user.email === ADMIN_EMAIL;
+    if (isAdmin) {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('adminApp').style.display = 'block';
+      switchTab('overview', document.querySelector('.admin-tab'));
+    } else {
+      auth.signOut();
+      showLoginErr('Not authorised as admin.');
+    }
+  } catch(e) {
+    // Firestore check failed — fall back to email check only
+    if (user.email === ADMIN_EMAIL) {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('adminApp').style.display = 'block';
+      switchTab('overview', document.querySelector('.admin-tab'));
+    } else {
+      auth.signOut();
+      showLoginErr('Access denied.');
+    }
+  }
+});
+
+async function adminLogin() {
+  const email = document.getElementById('adminEmail').value.trim();
+  const pass  = document.getElementById('adminPass').value;
+  if (!email||!pass) return showLoginErr('Enter email and password.');
+  try { await auth.signInWithEmailAndPassword(email, pass); }
+  catch(e) { showLoginErr(e.code==='auth/wrong-password'||e.code==='auth/user-not-found'?'Wrong email or password.':e.message); }
+}
+function showLoginErr(msg) { const e=document.getElementById('loginErr'); e.textContent=msg; e.style.display='block'; }
+function adminSignOut() { auth.signOut(); location.reload(); }
+
+function toast(msg, type='success') {
+  const el = document.getElementById('toastMsg');
+  el.textContent = (type==='success'?'✓ ':'✕ ') + msg;
+  el.style.display = 'block';
+  el.style.background = type==='success'?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)';
+  el.style.borderColor = type==='success'?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)';
+  el.style.color = type==='success'?'var(--green)':'var(--red)';
+  setTimeout(()=>el.style.display='none',3000);
+}
+
+function loading() { document.getElementById('adminContent').innerHTML='<div class="admin-empty"><div class="spinner"></div></div>'; }
+
+let _activeTabBtn = null;
+function switchTab(tab, btn) {
+  if (_activeTabBtn) _activeTabBtn.classList.remove('active');
+  if (btn) { btn.classList.add('active'); _activeTabBtn = btn; }
+  loading();
+  ({overview:loadOverview,users:loadUsers,listings:loadListings,
+    reports:loadReports,announcements:loadAnnouncements,
+    maintenance:loadMaintenance,revenue:loadRevenue})[tab]?.();
+}
+
+// ══ OVERVIEW ══
+async function loadOverview() {
+  try {
+    const [users,items,requests,reports] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('items').get(),
+      db.collection('requests').get(),
+      db.collection('reports').get()
+    ]);
+    const buyers=users.docs.filter(d=>d.data().role==='buyer').length;
+    const sellers=users.docs.filter(d=>d.data().role==='seller').length;
+    const sold=items.docs.filter(d=>d.data().sold).length;
+    const pending=requests.docs.filter(d=>d.data().status==='pending').length;
+    let views=0; items.forEach(d=>views+=d.data().views||0);
+
+    document.getElementById('adminContent').innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-num">${users.size}</div><div class="stat-label">Users</div></div>
+        <div class="stat-card"><div class="stat-num">${items.size}</div><div class="stat-label">Listings</div></div>
+        <div class="stat-card"><div class="stat-num">${buyers}</div><div class="stat-label">Buyers</div></div>
+        <div class="stat-card"><div class="stat-num">${sellers}</div><div class="stat-label">Sellers</div></div>
+        <div class="stat-card"><div class="stat-num">${sold}</div><div class="stat-label">Sold</div></div>
+        <div class="stat-card"><div class="stat-num">${requests.size}</div><div class="stat-label">Requests</div></div>
+        <div class="stat-card"><div class="stat-num">${pending}</div><div class="stat-label">Pending</div></div>
+        <div class="stat-card"><div class="stat-num">${views.toLocaleString()}</div><div class="stat-label">Total Views</div></div>
+        <div class="stat-card"><div class="stat-num">${reports.size}</div><div class="stat-label">Reports</div></div>
+      </div>
+      <p class="section-title">Quick Actions</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-danger" onclick="switchTab('maintenance',null)">🔧 Maintenance</button>
+        <button class="btn btn-primary" onclick="switchTab('announcements',null)">📢 Announce</button>
+        <button class="btn btn-amber" onclick="switchTab('reports',null)">🚩 Reports (${reports.size})</button>
+      </div>`;
+  } catch(e) { showErr(e); }
+}
+
+// ══ USERS ══
+let uFilter='all';
+async function loadUsers() {
+  try {
+    const snap = await db.collection('users').get();
+    let users = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(uFilter==='buyer')  users=users.filter(u=>u.role==='buyer');
+    if(uFilter==='seller') users=users.filter(u=>u.role==='seller');
+    if(uFilter==='pro')    users=users.filter(u=>u.sellerPro);
+    if(uFilter==='banned') users=users.filter(u=>u.banned);
+
+    document.getElementById('adminContent').innerHTML=`
+      <div class="filter-bar">
+        ${['all','buyer','seller','pro','banned'].map(f=>`
+          <button class="filter-chip${uFilter===f?' active':''}" onclick="uFilter='${f}';loadUsers()">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`).join('')}
+      </div>
+      <p class="section-title">${users.length} users</p>
+      <div id="uList"></div>`;
+
+    const list=document.getElementById('uList');
+    users.sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)).forEach(u=>{
+      const init=(u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+      const d=document.createElement('div'); d.className='admin-card';
+      d.innerHTML=`
+        <div class="admin-card-avatar">${init}</div>
+        <div class="admin-card-info">
+          <p class="admin-card-title">${u.name||'—'}</p>
+          <p class="admin-card-sub">${u.email||''} · ${u.phone||'no phone'}</p>
+          <div style="display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;">
+            <span class="badge badge-${u.role||'buyer'}">${u.role||'buyer'}</span>
+            ${u.sellerPro?'<span class="badge badge-pro">⚡ Pro</span>':''}
+            ${u.verified?'<span class="badge badge-verified">✓ Verified</span>':''}
+            ${u.banned?'<span class="badge badge-banned">Banned</span>':''}
+          </div>
+        </div>
+        <div class="admin-card-actions">
+          ${!u.verified?`<button class="btn btn-success" onclick="verifyUser('${u.id}')">Verify</button>`:''}
+          ${!u.banned?`<button class="btn btn-danger" onclick="banUser('${u.id}',true)">Ban</button>`
+                     :`<button class="btn btn-ghost" onclick="banUser('${u.id}',false)">Unban</button>`}
+          ${!u.sellerPro&&u.role==='seller'?`<button class="btn btn-amber" onclick="grantPro('${u.id}')">Grant Pro</button>`:''}
+        </div>`;
+      list.appendChild(d);
+    });
+    feather.replace();
+  } catch(e) { showErr(e); }
+}
+async function verifyUser(uid) { await db.collection('users').doc(uid).update({verified:true}); toast('User verified'); loadUsers(); }
+async function banUser(uid,banned) {
+  if(banned&&!confirm('Ban this user?')) return;
+  await db.collection('users').doc(uid).update({banned});
+  toast(banned?'User banned':'User unbanned'); loadUsers();
+}
+async function grantPro(uid) {
+  if(!confirm('Grant Pro to this seller for free?')) return;
+  await db.collection('users').doc(uid).update({sellerPro:true}); toast('Pro granted'); loadUsers();
+}
+
+// ══ LISTINGS ══
+let lFilter='all';
+async function loadListings() {
+  try {
+    const snap=await db.collection('items').orderBy('createdAt','desc').get();
+    let items=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(lFilter==='active') items=items.filter(i=>!i.sold);
+    if(lFilter==='sold')   items=items.filter(i=>i.sold);
+    if(lFilter==='boosted')items=items.filter(i=>i.boosted);
+
+    document.getElementById('adminContent').innerHTML=`
+      <div class="filter-bar">
+        ${['all','active','sold','boosted'].map(f=>`
+          <button class="filter-chip${lFilter===f?' active':''}" onclick="lFilter='${f}';loadListings()">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`).join('')}
+      </div>
+      <p class="section-title">${items.length} listings</p>
+      <div id="lList"></div>`;
+
+    const list=document.getElementById('lList');
+    items.forEach(item=>{
+      const img=(item.imageUrls||[])[0]||'';
+      const d=document.createElement('div'); d.className='admin-card';
+      d.innerHTML=`
+        <div class="admin-card-img" ${img?`style="background-image:url('${img}')"`:''}>${!img?'📦':''}</div>
+        <div class="admin-card-info">
+          <p class="admin-card-title">${item.title||'—'}</p>
+          <p class="admin-card-sub">₦${Number(item.price||0).toLocaleString()} · ${item.seller||'?'} · 👁 ${item.views||0}</p>
+          <div style="margin-top:4px;">
+            <span class="badge ${item.sold?'badge-sold':'badge-active'}">${item.sold?'Sold':'Active'}</span>
+            ${item.boosted?'<span class="badge badge-pro">⚡ Boosted</span>':''}
+          </div>
+        </div>
+        <div class="admin-card-actions">
+          <button class="btn btn-amber" onclick="boostItem('${item.id}',${!item.boosted})">${item.boosted?'Unboost':'Boost ⚡'}</button>
+          <button class="btn btn-danger" onclick="deleteItem('${item.id}')">Delete</button>
+        </div>`;
+      list.appendChild(d);
+    });
+    feather.replace();
+  } catch(e) { showErr(e); }
+}
+async function boostItem(id,boost) { await db.collection('items').doc(id).update({boosted:boost}); toast(boost?'Listing boosted':'Boost removed'); loadListings(); }
+async function deleteItem(id) {
+  if(!confirm('Delete this listing permanently?')) return;
+  await db.collection('items').doc(id).delete(); toast('Listing deleted'); loadListings();
+}
+
+// ══ REPORTS ══
+async function loadReports() {
+  try {
+    const snap=await db.collection('reports').get();
+    if(snap.empty){document.getElementById('adminContent').innerHTML='<div class="admin-empty">No reports 🎉</div>';return;}
+    document.getElementById('adminContent').innerHTML=`<p class="section-title">${snap.size} report${snap.size!==1?'s':''}</p><div id="rList"></div>`;
+    const list=document.getElementById('rList');
+    snap.forEach(doc=>{
+      const r=doc.data();
+      const date=r.createdAt?r.createdAt.toDate().toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'}):'';
+      const d=document.createElement('div'); d.className='report-card';
+      d.innerHTML=`
+        <p style="font-size:14px;font-weight:800;color:var(--red);margin-bottom:4px;">🚩 ${r.itemTitle||'Listing'}</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
+          Reporter: ${r.reporterUid||'?'}<br>Seller: ${r.sellerUid||'?'}<br>Date: ${date}
+        </p>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-danger" onclick="deleteReported('${r.itemId}','${doc.id}')">Delete Listing</button>
+          <button class="btn btn-ghost" onclick="dismissReport('${doc.id}')">Dismiss</button>
+        </div>`;
+      list.appendChild(d);
+    });
+  } catch(e) { showErr(e); }
+}
+async function deleteReported(itemId,reportId) {
+  if(!confirm('Delete listing and dismiss report?')) return;
+  await Promise.all([db.collection('items').doc(itemId).delete().catch(()=>{}), db.collection('reports').doc(reportId).delete()]);
+  toast('Listing deleted and report dismissed'); loadReports();
+}
+async function dismissReport(reportId) { await db.collection('reports').doc(reportId).delete(); toast('Report dismissed'); loadReports(); }
+
+// ══ ANNOUNCEMENTS ══
+async function loadAnnouncements() {
+  document.getElementById('adminContent').innerHTML=`
+    <div class="maintenance-card">
+      <p class="section-title" style="margin-top:0;">New Announcement</p>
+      <input class="a-input" id="aTitle" placeholder="Title"/>
+      <textarea class="a-input" id="aMsg" rows="3" placeholder="Message…"></textarea>
+      <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="postAnnouncement()">📢 Post</button>
+    </div>
+    <p class="section-title">Existing</p>
+    <div id="aList"><div class="admin-empty"><div class="spinner"></div></div></div>`;
+  feather.replace();
+  try {
+    const snap=await db.collection('announcements').orderBy('createdAt','desc').get();
+    const list=document.getElementById('aList');
+    if(snap.empty){list.innerHTML='<div class="admin-empty">None yet.</div>';return;}
+    list.innerHTML='';
+    snap.forEach(doc=>{
+      const d_=doc.data();
+      const date=d_.createdAt?d_.createdAt.toDate().toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'}):'';
+      const d=document.createElement('div'); d.className='admin-card'; d.style.flexDirection='column'; d.style.alignItems='flex-start';
+      d.innerHTML=`
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:flex-start;gap:12px;">
+          <div style="flex:1;">
+            <p class="admin-card-title">${d_.title||'—'}</p>
+            <p class="admin-card-sub">${d_.message||''}</p>
+            <p style="font-size:11px;color:var(--muted2);margin-top:4px;">${date}</p>
+          </div>
+          <button class="btn btn-danger" onclick="deleteAnnouncement('${doc.id}')">Delete</button>
+        </div>`;
+      list.appendChild(d);
+    });
+  } catch(e) { document.getElementById('aList').innerHTML='<div class="admin-empty">Error loading.</div>'; }
+}
+async function postAnnouncement() {
+  const title=document.getElementById('aTitle').value.trim();
+  const msg=document.getElementById('aMsg').value.trim();
+  if(!title||!msg){toast('Fill in both fields.','error');return;}
+  await db.collection('announcements').add({title,message:msg,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+  toast('Announcement posted'); loadAnnouncements();
+}
+async function deleteAnnouncement(id) {
+  if(!confirm('Delete?')) return;
+  await db.collection('announcements').doc(id).delete(); toast('Deleted'); loadAnnouncements();
+}
+
+// ══ MAINTENANCE ══
+async function loadMaintenance() {
+  try {
+    const snap=await db.collection('config').doc('maintenance').get();
+    const data=snap.exists?snap.data():{active:false,message:''};
+    const isOn=data.active===true;
+    document.getElementById('adminContent').innerHTML=`
+      <div class="maintenance-card">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-title">Maintenance Mode</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px;">Shows maintenance screen to all users</div>
+          </div>
+          <button class="toggle-switch${isOn?' on':''}" id="mToggle" onclick="toggleMaintenance(this)"></button>
+        </div>
+        <div style="font-size:13px;font-weight:700;color:${isOn?'var(--red)':'var(--green)'};margin-bottom:14px;">
+          ${isOn?'🔴 MAINTENANCE ON — app is down':'🟢 APP LIVE — users can access'}
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:6px;">Message shown to users</p>
+        <textarea class="a-input" id="mMsg" rows="2">${data.message||''}</textarea>
+        <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="saveMaintenance()">Save</button>
+      </div>`;
+  } catch(e) { showErr(e); }
+}
+async function toggleMaintenance(btn) {
+  const isOn=btn.classList.contains('on');
+  const msg=document.getElementById('mMsg').value.trim();
+  await db.collection('config').doc('maintenance').set({
+    active:!isOn, message:msg||"We're making improvements. Check back soon.",
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  },{merge:true});
+  toast(!isOn?'⚠️ Maintenance ON':'✓ App is live'); loadMaintenance();
+}
+async function saveMaintenance() {
+  const btn=document.getElementById('mToggle');
+  const isOn=btn.classList.contains('on');
+  const msg=document.getElementById('mMsg').value.trim();
+  await db.collection('config').doc('maintenance').set({
+    active:isOn, message:msg||"We're making improvements. Check back soon.",
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  },{merge:true});
+  toast('Settings saved');
+}
+
+// ══ REVENUE ══
+async function loadRevenue() {
+  try {
+    const [proSnap,reqSnap] = await Promise.all([
+      db.collection('users').where('sellerPro','==',true).get(),
+      db.collection('requests').where('status','==','accepted').get()
+    ]);
+    const proRev = proSnap.size * 1500;
+    document.getElementById('adminContent').innerHTML=`
+      <div class="revenue-big">
+        <div class="revenue-num">₦${proRev.toLocaleString()}</div>
+        <div class="revenue-label">Pro Revenue · ${proSnap.size} seller${proSnap.size!==1?'s':''} × ₦1,500/mo</div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-num">${proSnap.size}</div><div class="stat-label">Pro Sellers</div></div>
+        <div class="stat-card"><div class="stat-num">${reqSnap.size}</div><div class="stat-label">Accepted Orders</div></div>
+      </div>
+      <p class="section-title">Pro Sellers</p>
+      <div id="proList"></div>`;
+    const list=document.getElementById('proList');
+    if(proSnap.empty){list.innerHTML='<div class="admin-empty">No Pro sellers yet.</div>';return;}
+    proSnap.forEach(doc=>{
+      const u=doc.data();
+      const init=(u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+      const d=document.createElement('div'); d.className='admin-card';
+      d.innerHTML=`
+        <div class="admin-card-avatar">${init}</div>
+        <div class="admin-card-info">
+          <p class="admin-card-title">${u.name||'—'}</p>
+          <p class="admin-card-sub">${u.email||''}</p>
+        </div>
+        <span class="badge badge-pro">⚡ Pro</span>`;
+      list.appendChild(d);
+    });
+    feather.replace();
+  } catch(e) { showErr(e); }
+}
+
+function showErr(e) { document.getElementById('adminContent').innerHTML=`<div class="admin-empty" style="color:var(--red);">Error: ${e.message}</div>`; }
+</script>
+</body>
+</html>

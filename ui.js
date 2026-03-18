@@ -46,15 +46,21 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Always reset before showing — prevents stale content on reopen
+    // Buyers must be in selling mode to list
+    const u = window.currentUser;
+    if (u.role === 'buyer' && !u.sellingMode) {
+      if (confirm('You need to enable Selling Mode to list items.\n\nSwitch to Selling Mode now?')) {
+        if (window.toggleSellingMode) window.toggleSellingMode();
+      }
+      return;
+    }
+
     resetAddForm();
 
-    // Auto-fill seller info banner from logged-in profile
-    const user     = window.currentUser;
-    const initials = user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const initials = u.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     document.getElementById('bannerAvatar').textContent = initials;
-    document.getElementById('bannerName').textContent   = user.name;
-    document.getElementById('bannerPhone').textContent  = user.phone ? `+${user.phone}` : 'No phone set';
+    document.getElementById('bannerName').textContent   = u.name;
+    document.getElementById('bannerPhone').textContent  = u.phone ? `+${u.phone}` : 'No phone set';
 
     feather.replace();
     addItemForm.classList.remove('hidden');
@@ -203,9 +209,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // ── Location chips (NEW) ──────────────────────────────
+  document.querySelectorAll('.location-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.location-chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      activeLocation = btn.dataset.loc;
+      updateFilterBadge();
+      window.loadItems();
+    });
+  });
+
   clearFiltersBtn.addEventListener('click', () => {
     myListingsUid    = null;
-    activePriceRange = 'all'; activeSort = 'newest';
+    activePriceRange = 'all'; activeSort = 'newest'; activeLocation = 'all';
     searchQuery = ''; searchInput.value = ''; activeCategory = 'all';
 
     document.querySelector('.chip[data-cat="all"]').click();
@@ -213,22 +230,26 @@ document.addEventListener('DOMContentLoaded', () => {
       c.classList.toggle('active', c.dataset.price === 'all'));
     document.querySelectorAll('.sort-chip').forEach(c =>
       c.classList.toggle('active', c.dataset.sort === 'newest'));
+    document.querySelectorAll('.location-chip').forEach(c =>
+      c.classList.toggle('active', c.dataset.loc === 'all'));
 
     updateFilterBadge();
     window.loadItems();
   });
 
   function updateFilterBadge() {
-    const hasPrice = activePriceRange !== 'all';
-    const hasSort  = activeSort !== 'newest';
-    const count    = (hasPrice ? 1 : 0) + (hasSort ? 1 : 0);
+    const hasPrice    = activePriceRange !== 'all';
+    const hasSort     = activeSort !== 'newest';
+    const hasLocation = typeof activeLocation !== 'undefined' && activeLocation !== 'all';
+    const count       = (hasPrice ? 1 : 0) + (hasSort ? 1 : 0) + (hasLocation ? 1 : 0);
 
     filterBadge.textContent = count;
     filterBadge.classList.toggle('hidden', count === 0);
 
     const parts = [];
-    if (hasPrice) parts.push({ all:'All','0-1000':'Under ₦1k','1000-5000':'₦1k–₦5k','5000-20000':'₦5k–₦20k','20000+':'₦20k+' }[activePriceRange]);
-    if (hasSort)  parts.push({ newest:'Newest','price-asc':'Price ↑','price-desc':'Price ↓' }[activeSort]);
+    if (hasPrice)    parts.push({ all:'All','0-1000':'Under ₦1k','1000-5000':'₦1k–₦5k','5000-20000':'₦5k–₦20k','20000+':'₦20k+' }[activePriceRange]);
+    if (hasSort)     parts.push({ newest:'Newest','price-asc':'Price ↑','price-desc':'Price ↓' }[activeSort]);
+    if (hasLocation) parts.push({ main:'🏛️ Main','annex':'🏫 Annex','town':'🏙️ Town' }[activeLocation]);
 
     if (parts.length) {
       activeFilterText.textContent = parts.join(' · ');
@@ -287,11 +308,32 @@ document.addEventListener('DOMContentLoaded', () => {
       };
     }
 
-    document.getElementById('overlayWaBtn').onclick = () =>
-      window.open(
-        `https://wa.me/${item.phone}?text=Hi, I'm interested in your ${item.title}`,
-        '_blank'
-      );
+    // ── Save button (NEW) ──────────────────────────────
+    const saveBtn = document.getElementById('overlaySaveBtn');
+    if (saveBtn) {
+      const isOwner_ = window.currentUser && window.currentUser.uid === item.sellerUid;
+      saveBtn.style.display = (!isOwner_ && window.currentUser) ? 'flex' : 'none';
+      saveBtn.dataset.id = id;
+      const isSaved = window.userFavorites && window.userFavorites.has(id);
+      saveBtn.classList.toggle('saved', isSaved);
+      saveBtn.innerHTML = isSaved
+        ? '<i data-feather="bookmark"></i> Saved'
+        : '<i data-feather="bookmark"></i> Save Item';
+      saveBtn.onclick = () => {
+        if (window.toggleFavorite) window.toggleFavorite(id, item);
+      };
+    }
+
+    // ── Request button (NEW) ───────────────────────────
+    const requestBtn = document.getElementById('overlayRequestBtn');
+    if (requestBtn) {
+      const isOwner_  = window.currentUser && window.currentUser.uid === item.sellerUid;
+      const canRequest = window.currentUser && !isOwner_ && !item.sold;
+      requestBtn.style.display = canRequest ? 'flex' : 'none';
+      requestBtn.onclick = () => {
+        if (window.openRequestModal) window.openRequestModal(id, item);
+      };
+    }
 
     // Condition + location in overlay
     const conditionLabel = { 'new': '✨ New', 'fairly-used': '👍 Fairly Used', 'used': '📦 Used' };
@@ -392,7 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
     touchStartY = e.touches[0].clientY;
   });
   itemOverlay.querySelector('.overlay-sheet').addEventListener('touchend', e => {
-    if (e.changedTouches[0].clientY - touchStartY > 80) closeOverlay();
+    if (e.changedTouches[0].clientY - touchStartY > 160) closeOverlay();
   });
 
   // ── Seller Profile Sheet ──────────────────────────────
@@ -539,7 +581,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let spTouchY = 0;
     _sellerSheet.addEventListener('touchstart', e => { spTouchY = e.touches[0].clientY; });
     _sellerSheet.addEventListener('touchend',   e => {
-      if (e.changedTouches[0].clientY - spTouchY > 80) closeSellerProfile();
+      if (e.changedTouches[0].clientY - spTouchY > 160) closeSellerProfile();
     });
   }
 
@@ -715,6 +757,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const slide = document.createElement('div');
       slide.className = 'gallery-slide';
       slide.style.backgroundImage = `url('${src}')`;
+      // Tap to open fullscreen
+      slide.addEventListener('click', () => openImageViewer(urls, i));
       gallery.appendChild(slide);
 
       const dot = document.createElement('span');
@@ -731,6 +775,81 @@ document.addEventListener('DOMContentLoaded', () => {
         d.classList.toggle('active', i === idx));
     });
   }
+
+  // ── Fullscreen Image Viewer ───────────────────────────
+  let _viewerUrls  = [];
+  let _viewerIndex = 0;
+
+  function openImageViewer(urls, startIndex) {
+    _viewerUrls  = urls;
+    _viewerIndex = startIndex || 0;
+
+    const viewer  = document.getElementById('imageViewer');
+    const track   = document.getElementById('imageViewerTrack');
+    track.innerHTML = '';
+
+    urls.forEach(src => {
+      const slide = document.createElement('div');
+      slide.className = 'viewer-slide';
+      const img = document.createElement('img');
+      img.src = src;
+      img.className = 'viewer-img';
+      slide.appendChild(img);
+      track.appendChild(slide);
+    });
+
+    viewer.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    updateViewerPosition(false);
+    feather.replace();
+  }
+
+  function closeImageViewer() {
+    document.getElementById('imageViewer').classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  function updateViewerPosition(animate) {
+    const track   = document.getElementById('imageViewerTrack');
+    const counter = document.getElementById('imageViewerCounter');
+    track.style.transition = animate ? 'transform 0.3s ease' : 'none';
+    track.style.transform  = `translateX(-${_viewerIndex * 100}vw)`;
+    counter.textContent    = `${_viewerIndex + 1} / ${_viewerUrls.length}`;
+    document.getElementById('imageViewerPrev').style.display = _viewerIndex > 0 ? 'flex' : 'none';
+    document.getElementById('imageViewerNext').style.display = _viewerIndex < _viewerUrls.length - 1 ? 'flex' : 'none';
+  }
+
+  // Viewer controls
+  document.getElementById('imageViewerClose').addEventListener('click', closeImageViewer);
+  document.getElementById('imageViewerPrev').addEventListener('click', () => {
+    if (_viewerIndex > 0) { _viewerIndex--; updateViewerPosition(true); }
+  });
+  document.getElementById('imageViewerNext').addEventListener('click', () => {
+    if (_viewerIndex < _viewerUrls.length - 1) { _viewerIndex++; updateViewerPosition(true); }
+  });
+
+  // Swipe support on viewer
+  const viewerEl = document.getElementById('imageViewer');
+  let _vTouchX = 0;
+  let _vTouchTime = 0;
+  viewerEl.addEventListener('touchstart', e => {
+    _vTouchX = e.touches[0].clientX;
+    _vTouchTime = Date.now();
+  });
+  viewerEl.addEventListener('touchend', e => {
+    const dx       = e.changedTouches[0].clientX - _vTouchX;
+    const elapsed  = Date.now() - _vTouchTime;
+    const velocity = Math.abs(dx) / elapsed; // px/ms
+    // Require either large swipe (>80px) or fast flick (velocity > 0.5)
+    if (Math.abs(dx) > 80 || (Math.abs(dx) > 40 && velocity > 0.5)) {
+      if (dx < 0 && _viewerIndex < _viewerUrls.length - 1) { _viewerIndex++; updateViewerPosition(true); }
+      if (dx > 0 && _viewerIndex > 0) { _viewerIndex--; updateViewerPosition(true); }
+    }
+  });
+  // Tap backdrop (not image) to close
+  viewerEl.addEventListener('click', e => {
+    if (e.target === viewerEl) closeImageViewer();
+  });
 
   // ── Sidebar open / close ─────────────────────────────
   function openSidebar() {
@@ -800,6 +919,9 @@ document.addEventListener('DOMContentLoaded', () => {
       avatarEl.style.backgroundImage = `url('${u.photoURL}')`;
       avatarEl.textContent = '';
       if (nudgeEl) nudgeEl.classList.add('hidden');
+      // Tap to enlarge
+      avatarEl.style.cursor = 'zoom-in';
+      avatarEl.onclick = () => openImageViewer([u.photoURL], 0);
     } else {
       avatarEl.style.backgroundImage = '';
       avatarEl.textContent = initials;
@@ -929,7 +1051,7 @@ document.addEventListener('DOMContentLoaded', () => {
       profileTouchStartY = e.touches[0].clientY;
     });
     _profileSheet.addEventListener('touchend', e => {
-      if (e.changedTouches[0].clientY - profileTouchStartY > 80) closeProfile();
+      if (e.changedTouches[0].clientY - profileTouchStartY > 160) closeProfile();
     });
   }
 
@@ -988,11 +1110,24 @@ document.addEventListener('DOMContentLoaded', () => {
     openProfile();
   });
 
-  const _menuAddItem = document.getElementById('menuAddItem');
-  if (_menuAddItem) _menuAddItem.addEventListener('click', (e) => {
+  const _menuSellerDash = document.getElementById('menuSellerDash');
+  if (_menuSellerDash) _menuSellerDash.addEventListener('click', (e) => {
     e.preventDefault();
     closeSidebar();
-    openAddForm();
+    if (window.openSellerDashboard) window.openSellerDashboard();
+  });
+
+  const _menuBuyerDash = document.getElementById('menuBuyerDash');
+  if (_menuBuyerDash) _menuBuyerDash.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeSidebar();
+    if (window.openBuyerDashboard) window.openBuyerDashboard();
+  });
+
+  const _menuSellingMode = document.getElementById('menuSellingMode');
+  if (_menuSellingMode) _menuSellingMode.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (window.toggleSellingMode) window.toggleSellingMode();
   });
 
   const _menuMyListings = document.getElementById('menuMyListings');
@@ -1061,7 +1196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let fbTouchY = 0;
     _feedbackSheet.addEventListener('touchstart', e => { fbTouchY = e.touches[0].clientY; });
     _feedbackSheet.addEventListener('touchend',   e => {
-      if (e.changedTouches[0].clientY - fbTouchY > 80) closeFeedback();
+      if (e.changedTouches[0].clientY - fbTouchY > 160) closeFeedback();
     });
   }
 
@@ -1142,13 +1277,64 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.handleLogout) window.handleLogout();
   });
 
-  // ── Bottom nav ────────────────────────────────────────
-  document.getElementById('navHome').addEventListener('click', () =>
-    window.scrollTo({ top: 0, behavior: 'smooth' }));
+  // ── Expose openAddForm globally for dashboard.js ──────
+  window.openAddForm = openAddForm;
 
-  document.getElementById('navAdd').addEventListener('click', openAddForm);
+  // ══════════════════════════════════════════════════════
+  // THREE-NAV SYSTEM: guest | buyer | seller
+  // ══════════════════════════════════════════════════════
 
-  document.getElementById('navMenu').addEventListener('click', openSidebar);
+  window.switchNav = function(role) {
+    document.getElementById('buyerNav')?.classList.toggle('hidden', role !== 'buyer');
+    document.getElementById('sellerNav')?.classList.toggle('hidden', role !== 'seller');
+    document.getElementById('guestNav')?.classList.toggle('hidden', role !== null && role !== undefined);
+    feather.replace();
+  };
+
+  // Default to guest nav until auth resolves
+  window.switchNav(null);
+
+  // ── Guest nav ─────────────────────────────────────────
+  document.getElementById('navHomeG')?.addEventListener('click', () =>
+    window.scrollTo({ top:0, behavior:'smooth' }));
+  document.getElementById('navLoginG')?.addEventListener('click', () =>
+    window.showAuthModal?.('login'));
+  document.getElementById('navMenuG')?.addEventListener('click', openSidebar);
+  document.getElementById('notifBellBtnG')?.addEventListener('click', openNotif);
+  document.getElementById('notifBellBtnS')?.addEventListener('click', openNotif);
+
+  // ── Buyer nav ─────────────────────────────────────────
+  document.getElementById('navHome')?.addEventListener('click', () => {
+    if (window.showPage) window.showPage('market');
+    window.scrollTo({ top:0, behavior:'smooth' });
+  });
+  document.getElementById('navSaved')?.addEventListener('click', () =>
+    window.openSavedItems?.());
+  document.getElementById('navBuyerCenter')?.addEventListener('click', () =>
+    window.openBuyerDashboard?.());
+  document.getElementById('navInbox')?.addEventListener('click', () =>
+    window.openInbox?.());
+  document.getElementById('navMenuB')?.addEventListener('click', openSidebar);
+
+  // ── Seller nav ─────────────────────────────────────────
+  document.getElementById('navMarket')?.addEventListener('click', () => {
+    if (window.showPage) window.showPage('market');
+    window.scrollTo({ top:0, behavior:'smooth' });
+  });
+  document.getElementById('navSellerDash')?.addEventListener('click', () =>
+    window.openSellerDashboard?.());
+  document.getElementById('navAddItem')?.addEventListener('click', openAddForm);
+  document.getElementById('navOrders')?.addEventListener('click', () => {
+    window.openSellerDashboard?.();
+    setTimeout(() => window.switchSellerTab?.('requests'), 100);
+  });
+  document.getElementById('navMenuS')?.addEventListener('click', openSidebar);
+
+  // ── Dashboard back buttons ─────────────────────────────
+  document.getElementById('sellerDashBack')?.addEventListener('click', () =>
+    window.showPage?.('market'));
+  document.getElementById('buyerDashBack')?.addEventListener('click', () =>
+    window.showPage?.('market'));
 
   // Outside-click closes filter panel only (sidebar has its own overlay)
   document.addEventListener('click', e => {
@@ -1223,11 +1409,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Announcements ─────────────────────────────────────
-  const notifBellBtn = document.getElementById('notifBellBtn');
-  const notifDot     = document.getElementById('notifDot');
+  // Bell exists in all three navs — wire all of them
+  const notifDot     = document.getElementById('notifDotB');
+  const notifDotG    = document.getElementById('notifDotG');
   const notifOverlay = document.getElementById('notifOverlay');
   const notifClose   = document.getElementById('notifClose');
   const notifList    = document.getElementById('notifList');
+
+  function showNotifDot() {
+    ['notifDotB','notifDotG','notifDotS','notifDotH'].forEach(id => {
+      const d = document.getElementById(id); if(d) d.classList.remove('hidden');
+    });
+  }
+  function hideNotifDot() {
+    ['notifDotB','notifDotG','notifDotS','notifDotH'].forEach(id => {
+      const d = document.getElementById(id); if(d) d.classList.add('hidden');
+    });
+  }
 
   // Load announcements from Firestore on page load
   async function loadAnnouncements() {
@@ -1243,7 +1441,7 @@ document.addEventListener('DOMContentLoaded', () => {
       snap.forEach(doc => console.log('Announcement doc:', doc.id, doc.data()));
 
       // Show dot if there are any announcements
-      if (notifDot) notifDot.classList.remove('hidden');
+      showNotifDot();
 
       if (notifList) {
         notifList.innerHTML = '';
@@ -1271,8 +1469,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function openNotif() {
     if (!notifOverlay) return;
-    // Hide dot once opened
-    if (notifDot) notifDot.classList.add('hidden');
+    hideNotifDot();
     notifOverlay.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
     requestAnimationFrame(() =>
@@ -1291,7 +1488,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 320);
   }
 
-  if (notifBellBtn) notifBellBtn.addEventListener('click', openNotif);
+  // Bells wired in nav section above (notifBellBtnB, notifBellBtnG, notifBellBtnH)
+  document.getElementById('notifBellBtnH')?.addEventListener('click', () =>
+    window.openNotifOverlay ? window.openNotifOverlay() : openNotif());
   if (notifClose)   notifClose.addEventListener('click', closeNotif);
   if (notifOverlay) notifOverlay.addEventListener('click', e => {
     if (e.target === notifOverlay) closeNotif();
@@ -1303,7 +1502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let notifTouchY = 0;
     _notifSheet.addEventListener('touchstart', e => { notifTouchY = e.touches[0].clientY; });
     _notifSheet.addEventListener('touchend',   e => {
-      if (e.changedTouches[0].clientY - notifTouchY > 80) closeNotif();
+      if (e.changedTouches[0].clientY - notifTouchY > 160) closeNotif();
     });
   }
 

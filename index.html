@@ -22,6 +22,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://js.paystack.co/v1/inline.js"></script>
 </head>
 <body>
 
@@ -80,6 +81,25 @@
             <!-- Signup Panel -->
             <div id="panelSignup" class="auth-panel hidden">
                 <p class="auth-subtitle">Join UniMart 🎓</p>
+
+                <!-- Role selector -->
+                <div class="role-selector" id="roleSelectorWrap">
+                    <p class="role-selector-label">I want to…</p>
+                    <div class="role-options">
+                        <div class="role-option selected" id="roleOptBuyer" onclick="selectRole('buyer')">
+                            <div class="role-option-icon">🛍️</div>
+                            <div class="role-option-name">Buy Items</div>
+                            <div class="role-option-desc">Browse and purchase from sellers</div>
+                        </div>
+                        <div class="role-option" id="roleOptSeller" onclick="selectRole('seller')">
+                            <div class="role-option-icon">🏪</div>
+                            <div class="role-option-name">Sell Items</div>
+                            <div class="role-option-desc">List items and manage orders</div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="signupRole" value="buyer">
+                </div>
+
                 <input type="text"     id="signupName"     placeholder="Full Name">
                 <input type="email"    id="signupEmail"    placeholder="Email address">
                 <input type="password" id="signupPassword" placeholder="Password (min 6 chars)">
@@ -133,8 +153,11 @@
                     <p class="overlay-desc-label">Description</p>
                     <p class="overlay-desc" id="overlayDesc"></p>
                 </div>
-                <button class="overlay-wa-btn" id="overlayWaBtn">
-                    <i data-feather="message-circle"></i> Chat on WhatsApp
+                <button class="overlay-save-btn" id="overlaySaveBtn" style="display:none">
+                    <i data-feather="bookmark"></i> Save Item
+                </button>
+                <button class="overlay-request-btn" id="overlayRequestBtn" style="display:none">
+                    <i data-feather="shopping-bag"></i> Request Item
                 </button>
                 <button class="overlay-report-btn" id="overlayReportBtn">
                     <i data-feather="flag"></i> Report Listing
@@ -195,9 +218,9 @@
         </div>
         <!-- User avatar / login button -->
         <div class="header-user" id="headerUser">
-            <button class="notif-bell-btn" id="notifBellBtn" title="Announcements">
+            <button class="notif-bell-btn" id="notifBellBtnH" title="Alerts">
                 <i data-feather="bell"></i>
-                <span class="notif-dot hidden" id="notifDot"></span>
+                <span class="notif-dot hidden" id="notifDotH"></span>
             </button>
             <button class="user-avatar-btn" id="userAvatarBtn">
                 <i data-feather="user"></i>
@@ -340,6 +363,15 @@
                     <button class="sort-chip active" data-sort="newest">Newest</button>
                     <button class="sort-chip" data-sort="price-asc">Price ↑</button>
                     <button class="sort-chip" data-sort="price-desc">Price ↓</button>
+                </div>
+            </div>
+            <div class="filter-section">
+                <p class="filter-panel-title"><i data-feather="map-pin"></i> Location</p>
+                <div class="price-chips">
+                    <button class="location-chip active" data-loc="all">All</button>
+                    <button class="location-chip" data-loc="main">🏛️ Main Campus</button>
+                    <button class="location-chip" data-loc="annex">🏫 Annex</button>
+                    <button class="location-chip" data-loc="town">🏙️ Town Camp</button>
                 </div>
             </div>
         </div>
@@ -592,14 +624,39 @@
                 <span>My Profile</span>
                 <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
             </a>
-            <a href="#" class="sidebar-item" id="menuAddItem">
-                <div class="sidebar-item-icon"><i data-feather="plus-circle"></i></div>
-                <span>List an Item</span>
+
+            <!-- Seller Dashboard — shown only for sellers -->
+            <a href="#" class="sidebar-item hidden" id="menuSellerDash">
+                <div class="sidebar-item-icon seller-dash-icon"><i data-feather="bar-chart-2"></i></div>
+                <span class="seller-dash-label">Seller Dashboard</span>
                 <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
             </a>
-            <a href="#" class="sidebar-item" id="menuMyListings">
-                <div class="sidebar-item-icon"><i data-feather="package"></i></div>
-                <span>My Listings</span>
+
+            <!-- Buyer Dashboard -->
+            <a href="#" class="sidebar-item hidden" id="menuBuyerDash">
+                <div class="sidebar-item-icon buyer-dash-icon"><i data-feather="shopping-bag"></i></div>
+                <span class="buyer-dash-label">My Orders</span>
+                <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
+            </a>
+
+            <!-- Selling Mode toggle — buyers only -->
+            <a href="#" class="sidebar-item hidden" id="menuSellingMode">
+                <div class="sidebar-item-icon"><i data-feather="toggle-left" id="sellingModeIcon"></i></div>
+                <div style="flex:1;min-width:0;">
+                    <div id="sellingModeLabel" style="font-size:14px;font-weight:700;color:#1f2937;">Switch to Selling Mode</div>
+                    <div id="sellingModeDesc" style="font-size:11px;color:#9ca3af;margin-top:2px;">Enable to list items</div>
+                </div>
+            </a>
+
+            <a href="#" class="sidebar-item" id="menuSaved">
+                <div class="sidebar-item-icon"><i data-feather="bookmark"></i></div>
+                <span>Saved Items</span>
+                <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
+            </a>
+            <a href="#" class="sidebar-item" id="menuInbox">
+                <div class="sidebar-item-icon"><i data-feather="inbox"></i></div>
+                <span>Inbox</span>
+                <span class="menu-inbox-badge hidden" id="menuInboxBadge">0</span>
                 <i data-feather="chevron-right" class="sidebar-item-arrow"></i>
             </a>
             <a href="#" class="sidebar-item" id="menuFeedback">
@@ -628,28 +685,269 @@
     </div>
 
     <!-- ── Bottom Navigation ────────────────────────── -->
-    <div class="bottom-nav-container">
+
+
+    <!-- ══ FULLSCREEN IMAGE VIEWER ══════════════════════ -->
+    <div id="imageViewer" class="image-viewer hidden">
+        <button class="image-viewer-close" id="imageViewerClose">
+            <i data-feather="x"></i>
+        </button>
+        <div class="image-viewer-counter" id="imageViewerCounter"></div>
+        <div class="image-viewer-track" id="imageViewerTrack"></div>
+        <button class="image-viewer-prev" id="imageViewerPrev">
+            <i data-feather="chevron-left"></i>
+        </button>
+        <button class="image-viewer-next" id="imageViewerNext">
+            <i data-feather="chevron-right"></i>
+        </button>
+    </div>
+
+    <!-- ══ SAVED ITEMS OVERLAY ══════════════════════════ -->
+    <div id="savedOverlay" class="item-overlay hidden">
+        <div class="overlay-sheet saved-sheet">
+            <div class="overlay-drag-bar"></div>
+            <button class="overlay-close" id="savedClose"><i data-feather="x"></i></button>
+            <div class="inbox-header">
+                <i data-feather="bookmark"></i>
+                <h2>Saved Items</h2>
+            </div>
+            <div id="savedList" class="saved-list">
+                <p class="reviews-empty">Loading…</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ REQUEST MODAL ══════════════════════════════════ -->
+    <div id="requestOverlay" class="item-overlay hidden">
+        <div class="overlay-sheet request-sheet">
+            <div class="overlay-drag-bar"></div>
+            <button class="overlay-close" id="reqClose"><i data-feather="x"></i></button>
+            <div class="inbox-header">
+                <i data-feather="shopping-bag"></i>
+                <h2>Request Item</h2>
+            </div>
+            <div class="req-preview">
+                <p class="req-item-title" id="reqItemTitle"></p>
+                <p class="req-item-price" id="reqItemPrice"></p>
+                <p class="req-item-seller" id="reqItemSeller"></p>
+            </div>
+            <div class="req-form">
+                <label class="req-label">Message to seller (optional)</label>
+                <textarea id="reqMessage" class="req-textarea" rows="3"
+                    placeholder="e.g. Is this still available? Can you hold it for me?"></textarea>
+                <p class="req-note"><i data-feather="info"></i> The seller will accept or decline your request. You can also chat on WhatsApp.</p>
+                <p id="reqStatus" class="req-status hidden"></p>
+                <button class="req-submit-btn" id="reqSubmitBtn">Send Request</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ INBOX OVERLAY ════════════════════════════════ -->
+    <div id="inboxOverlay" class="item-overlay hidden">
+        <div class="overlay-sheet inbox-sheet">
+            <div class="overlay-drag-bar"></div>
+            <button class="overlay-close" id="inboxClose"><i data-feather="x"></i></button>
+            <div class="inbox-header">
+                <i data-feather="inbox"></i>
+                <h2>Inbox</h2>
+            </div>
+            <div class="inbox-tabs">
+                <button class="inbox-tab active" id="inboxTabMessages">Messages</button>
+                <button class="inbox-tab" id="inboxTabRequests">Requests</button>
+            </div>
+            <div id="inboxMessages" class="inbox-content">
+                <p class="reviews-empty">Loading…</p>
+            </div>
+            <div id="inboxRequests" class="inbox-content hidden">
+                <p class="reviews-empty">Loading…</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ CONVERSATION OVERLAY ═════════════════════════ -->
+    <div id="conversationOverlay" class="item-overlay hidden">
+        <div class="overlay-sheet conversation-sheet">
+            <div class="conv-header">
+                <button class="conv-back-btn" id="convBack"><i data-feather="arrow-left"></i></button>
+                <div class="conv-header-info">
+                    <p class="conv-title" id="convTitle"></p>
+                    <p class="conv-subtitle" id="convSubtitle"></p>
+                </div>
+                <button class="overlay-close conv-close-btn" id="convClose"><i data-feather="x"></i></button>
+            </div>
+            <div class="conv-messages" id="convMessages">
+                <p class="reviews-empty">Loading…</p>
+            </div>
+            <div class="conv-input-row">
+                <button class="conv-emoji-btn" id="convEmojiBtn" title="Emoji">😊</button>
+                <textarea id="convInput" class="conv-input" placeholder="Type a message…" rows="1"></textarea>
+                <button class="conv-newline-btn" id="convNewlineBtn" title="New paragraph">↵</button>
+                <button class="conv-send-btn" id="convSendBtn"><i data-feather="send"></i></button>
+            </div>
+            <!-- Emoji picker -->
+            <div id="emojiPicker" class="emoji-picker hidden">
+                <div class="emoji-grid" id="emojiGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ BUYER NAV ═════════════════════════════════════ -->
+    <div class="bottom-nav-container" id="buyerNav">
         <div class="bottom-nav">
-            <button class="nav-btn" id="navHome">
-                <i data-feather="home"></i>
-                <span>Home</span>
+            <button class="nav-btn nav-active" id="navHome">
+                <i data-feather="home"></i><span>Home</span>
             </button>
-            <button class="nav-btn nav-center" id="navAdd">
-                <i data-feather="plus"></i>
+            <button class="nav-btn" id="navSaved">
+                <i data-feather="bookmark"></i><span>Saved</span>
             </button>
-            <button class="nav-btn" id="navMenu">
-                <i data-feather="menu"></i>
-                <span>Menu</span>
+            <button class="nav-btn nav-center" id="navBuyerCenter">
+                <i data-feather="inbox"></i>
+            </button>
+            <button class="nav-btn nav-inbox-btn" id="navInbox">
+                <i data-feather="message-square"></i><span>Inbox</span>
+                <span class="nav-inbox-badge hidden" id="inboxNavBadge">0</span>
+            </button>
+            <button class="nav-btn" id="navMenuB">
+                <i data-feather="menu"></i><span>Menu</span>
             </button>
         </div>
     </div>
 
-    <!-- Scripts: order matters -->
+    <!-- ══ SELLER NAV ════════════════════════════════════ -->
+    <div class="bottom-nav-container hidden" id="sellerNav">
+        <div class="bottom-nav">
+            <button class="nav-btn nav-active" id="navMarket">
+                <i data-feather="home"></i><span>Market</span>
+            </button>
+            <button class="nav-btn" id="navSellerDash">
+                <i data-feather="bar-chart-2"></i><span>Dashboard</span>
+            </button>
+            <button class="nav-btn nav-center" id="navAddItem">
+                <i data-feather="plus"></i>
+            </button>
+            <button class="nav-btn nav-inbox-btn" id="navOrders">
+                <i data-feather="shopping-bag"></i><span>Orders</span>
+                <span class="nav-inbox-badge hidden" id="ordersNavBadge">0</span>
+            </button>
+            <button class="nav-btn" id="navMenuS">
+                <i data-feather="menu"></i><span>Menu</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ══ GUEST NAV ══════════════════════════════════════ -->
+    <div class="bottom-nav-container hidden" id="guestNav">
+        <div class="bottom-nav">
+            <button class="nav-btn nav-active" id="navHomeG">
+                <i data-feather="home"></i><span>Home</span>
+            </button>
+            <button class="nav-btn nav-center" id="navLoginG">
+                <i data-feather="user"></i>
+            </button>
+            <button class="nav-btn" id="navMenuG">
+                <i data-feather="menu"></i><span>Menu</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ══ SELLER DASHBOARD PAGE ══════════════════════════ -->
+    <div id="sellerDashPage" class="dash-page hidden">
+        <div class="dash-page-header seller-dash-header">
+            <button class="dash-page-back" id="sellerDashBack"><i data-feather="arrow-left"></i></button>
+            <div class="dash-page-title">
+                <p class="dash-role-badge">🏪 Seller</p>
+                <h2 id="sellerDashName">Dashboard</h2>
+            </div>
+            <div class="dash-page-actions">
+                <span id="sellerVerifiedBadge" class="verified-badge" style="display:none;">✓ Verified</span>
+                <p id="sellerDashPlan" class="dash-plan-badge free">Free Plan</p>
+                <button class="dash-upgrade-btn hidden" id="sellerUpgradeBtn">⚡ Go Pro</button>
+            </div>
+        </div>
+        <div class="dash-stats-row" id="sellerStatsRow">
+            <div class="dash-stat"><span class="dash-stat-num" id="dSListings">—</span><span class="dash-stat-label">Listings</span></div>
+            <div class="dash-stat-div"></div>
+            <div class="dash-stat"><span class="dash-stat-num" id="dSSold">—</span><span class="dash-stat-label">Sold</span></div>
+            <div class="dash-stat-div"></div>
+            <div class="dash-stat"><span class="dash-stat-num" id="dSPending">—</span><span class="dash-stat-label">Requests</span></div>
+            <div class="dash-stat-div"></div>
+            <div class="dash-stat"><span class="dash-stat-num" id="dSViews">—</span><span class="dash-stat-label">Views</span></div>
+        </div>
+        <div class="dash-tabs">
+            <button class="dash-tab active" id="dTabListings">Listings</button>
+            <button class="dash-tab" id="dTabRequests">Requests</button>
+            <button class="dash-tab" id="dTabOrders">Orders</button>
+            <button class="dash-tab pro-tab" id="dTabEarnings">₦ Earnings</button>
+            <button class="dash-tab pro-tab" id="dTabAnalytics">Analytics</button>
+        </div>
+        <div class="dash-content" id="sellerDashContent">
+            <p class="reviews-empty">Loading…</p>
+        </div>
+    </div>
+
+    <!-- ══ BUYER ORDERS PAGE ══════════════════════════════ -->
+    <div id="buyerDashPage" class="dash-page hidden">
+        <div class="dash-page-header buyer-dash-header">
+            <button class="dash-page-back" id="buyerDashBack"><i data-feather="arrow-left"></i></button>
+            <div class="dash-page-title">
+                <p class="dash-role-badge">🛍️ Buyer</p>
+                <h2 id="buyerDashName">My Orders</h2>
+            </div>
+        </div>
+        <div class="dash-stats-row">
+            <div class="dash-stat"><span class="dash-stat-num" id="dBOrders">—</span><span class="dash-stat-label">Orders</span></div>
+            <div class="dash-stat-div"></div>
+            <div class="dash-stat"><span class="dash-stat-num" id="dBAccepted">—</span><span class="dash-stat-label">Accepted</span></div>
+            <div class="dash-stat-div"></div>
+            <div class="dash-stat"><span class="dash-stat-num" id="dBSaved">—</span><span class="dash-stat-label">Saved</span></div>
+        </div>
+        <div class="dash-tabs">
+            <button class="dash-tab active" id="bTabOrders">All Orders</button>
+            <button class="dash-tab" id="bTabActive">Active</button>
+            <button class="dash-tab" id="bTabCompleted">Completed</button>
+            <button class="dash-tab" id="bTabCancelled">Cancelled</button>
+        </div>
+        <div class="dash-content" id="buyerDashContent">
+            <p class="reviews-empty">Loading…</p>
+        </div>
+    </div>
+
+    <!-- ══ ROLE PICKER MODAL (existing users without a role) ══ -->
+    <div id="rolePickerModal" class="modal hidden">
+        <div class="modal-content slide-in" style="max-width:400px;text-align:center;padding:32px 24px;">
+            <div style="font-size:48px;margin-bottom:12px;">👋</div>
+            <h2 style="font-size:22px;font-weight:800;margin-bottom:8px;">Welcome back!</h2>
+            <p style="font-size:14px;color:#6b7280;margin-bottom:24px;line-height:1.6;">
+                We've updated UniMart with separate buyer and seller experiences.
+                How do you primarily use UniMart?
+            </p>
+            <div class="role-options" style="margin-bottom:20px;">
+                <div class="role-option" id="rolePickBuyer" onclick="pickRole('buyer')">
+                    <div class="role-option-icon">🛍️</div>
+                    <div class="role-option-name">I Buy Items</div>
+                    <div class="role-option-desc">Browse and purchase from sellers</div>
+                </div>
+                <div class="role-option" id="rolePickSeller" onclick="pickRole('seller')">
+                    <div class="role-option-icon">🏪</div>
+                    <div class="role-option-name">I Sell Items</div>
+                    <div class="role-option-desc">List items and manage orders</div>
+                </div>
+            </div>
+            <p style="font-size:11px;color:#9ca3af;">You can switch modes anytime from the menu</p>
+            <button id="rolePickConfirmBtn" class="auth-submit" style="margin-top:16px;opacity:0.4;" disabled onclick="confirmRolePick()">
+                Continue →
+            </button>
+        </div>
+    </div>
+
     <script src="firebase.js"></script>
     <script src="cloudinary.js"></script>
     <script src="app.js"></script>
     <script src="marketplace.js"></script>
     <script src="auth.js"></script>
+    <script src="inbox.js"></script>
+    <script src="notifications.js"></script>
+    <script src="dashboard.js"></script>
     <script src="ui.js"></script>
 </body>
 </html>
