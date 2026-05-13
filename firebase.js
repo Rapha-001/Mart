@@ -1,3 +1,9 @@
+// firebase.js
+
+// Make sure you have the Firebase Messaging SDK included in your HTML
+// e.g., <script src="https://www.gstatic.com/firebasejs/8.x.x/firebase-messaging.js"></script>
+// or if using modules, ensure 'firebase/messaging' is imported at the top of this file.
+
 const firebaseConfig = {
   apiKey: "AIzaSyCn3zA6AuF4K25gAPPopl1rN3zglw6V9mQ",
   authDomain: "mart-b581e.firebaseapp.com",
@@ -7,12 +13,33 @@ const firebaseConfig = {
   appId: "1:227151575294:web:c4162c3d05dbac5a264daf"
 };
 
+let app; // Declare a variable to hold the initialized app
 if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
+  app = firebase.initializeApp(firebaseConfig);
+} else {
+  app = firebase.app(); // Get the default app if already initialized
 }
 
 var db   = firebase.firestore();
 var auth = firebase.auth();
+
+// === ADD THIS LINE FOR FIREBASE CLOUD MESSAGING ===
+var messaging = firebase.messaging(); // Initialize Firebase Cloud Messaging service
+
+// Optional: Request permission for notifications and get token
+// This part typically goes where you want to prompt the user for notifications.
+// It's not usually placed directly in firebase.js, but rather in your main app logic.
+/*
+messaging.requestPermission().then(function() {
+  console.log('Notification permission granted.');
+  return messaging.getToken();
+}).then(function(token) {
+  console.log('FCM registration token:', token);
+  // Send the token to your server to send messages to this device
+}).catch(function(err) {
+  console.log('Unable to get permission to notify.', err);
+});
+*/
 
 // ── Enable Firestore offline cache ────────────────────
 // Items load from cache instantly on repeat visits
