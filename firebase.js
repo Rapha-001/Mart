@@ -54,13 +54,6 @@ document.dispatchEvent(new Event('appReady'));
   }
 })();
 
-import { getMessaging } from "firebase/messaging";
-
-// ... assuming 'app' has already been initialized somewhere else
-
-const messaging = getMessaging(app);
-
-
 function showMaintenancePage(message) {
   // Hide everything and show maintenance screen
   document.querySelectorAll('body > *:not(#maintenanceScreen)').forEach(el => {
