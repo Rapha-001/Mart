@@ -6,6 +6,51 @@ const catEmoji = {
 };
 
 const ratingCache = {};
+const ITEMS_CACHE_KEY = 'unimart_cached_items';
+
+function serializeItemForCache(itemDoc) {
+  const data = { ...itemDoc.data };
+  if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+    data.createdAt = {
+      __type: 'timestamp',
+      seconds: data.createdAt.seconds,
+      nanoseconds: data.createdAt.nanoseconds,
+    };
+  }
+  return { id: itemDoc.id, data };
+}
+
+function hydrateItemFromCache(itemDoc) {
+  const data = { ...itemDoc.data };
+  if (data.createdAt && data.createdAt.__type === 'timestamp') {
+    data.createdAt = new firebase.firestore.Timestamp(
+      data.createdAt.seconds,
+      data.createdAt.nanoseconds
+    );
+  }
+  return { id: itemDoc.id, data };
+}
+
+function saveItemsToCache(items) {
+  try {
+    const serializable = items.map(serializeItemForCache);
+    localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(serializable));
+  } catch (e) {
+    console.warn('Could not save cached items:', e.message);
+  }
+}
+
+function getCachedItems() {
+  try {
+    const raw = localStorage.getItem(ITEMS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(hydrateItemFromCache);
+  } catch (e) {
+    return [];
+  }
+}
 
 async function fetchItemRating(itemId) {
   if (ratingCache[itemId] !== undefined) return ratingCache[itemId];
@@ -108,171 +153,187 @@ function applyFilters(docs) {
 // ── Main Firestore listener ────────────────────────────
 let unsubscribeItems = null;
 
-function loadItems() {
+function renderMarketplaceItems(allDocs) {
   const marketplace    = document.getElementById('marketplace');
   const loadingState   = document.getElementById('loadingState');
   const emptyState     = document.getElementById('emptyState');
   const noResultsState = document.getElementById('noResultsState');
   const resultsCount   = document.getElementById('resultsCount');
 
+  if (!marketplace || !loadingState || !emptyState || !noResultsState || !resultsCount) return;
+
+  loadingState.classList.add('hidden');
+  if (typeof hideSplash === 'function') hideSplash();
+
+  const filtered = applyFilters(allDocs);
+
+  resultsCount.textContent = filtered.length === allDocs.length
+    ? `${allDocs.length} item${allDocs.length !== 1 ? 's' : ''}`
+    : `${filtered.length} of ${allDocs.length} items`;
+
+  marketplace.innerHTML = '';
+
+  if (allDocs.length === 0) {
+    emptyState.classList.remove('hidden');
+    noResultsState.classList.add('hidden');
+    resultsCount.textContent = '';
+    feather.replace();
+    return;
+  }
+  emptyState.classList.add('hidden');
+
+  if (filtered.length === 0) {
+    noResultsState.classList.remove('hidden');
+    feather.replace();
+    return;
+  }
+  noResultsState.classList.add('hidden');
+
+  filtered.forEach(({ id, data: item }, idx) => {
+    const isNew   = item.createdAt && typeof item.createdAt.toDate === 'function' && (Date.now() - item.createdAt.toDate()) < 86400000;
+    const isOwner = window.currentUser && window.currentUser.uid === item.sellerUid;
+    const isSaved = window.userFavorites && window.userFavorites.has(id);
+
+    const conditionLabel = { 'new':'✨ New','fairly-used':'👍 Fairly Used','used':'📦 Used' };
+    const locationLabel  = { 'main':'🏛️ Main','annex':'🏫 Annex','town':'🏙️ Town' };
+
+    const card = document.createElement('div');
+    card.className = 'item-card';
+    card.style.animationDelay = `${idx * 0.05}s`;
+
+    card.innerHTML = `
+      ${item.sold ? '<div class="card-sold-overlay">SOLD</div>' : ''}
+      ${buildCollage(item.imageUrls)}
+      ${!isOwner ? `
+        <button class="card-save-btn ${isSaved ? 'saved' : ''}" data-id="${id}" title="${isSaved ? 'Saved' : 'Save'}">
+          <i data-feather="bookmark"></i>
+        </button>
+      ` : ''}
+      <div class="card-info">
+        <div class="card-top-row">
+          <span class="card-badge">${catEmoji[item.category] || '📦'} ${item.category}</span>
+          ${isNew        ? '<span class="card-new">NEW</span>'  : ''}
+          ${item.boosted ? '<span class="card-boost">⚡</span>' : ''}
+          ${isOwner      ? '<span class="card-mine">Mine</span>' : ''}
+          ${item.sold    ? '<span class="card-sold-badge">SOLD</span>' : ''}
+        </div>
+        <h3>${item.title}</h3>
+        <p class="card-price ${item.sold ? 'card-price-sold' : ''}">₦${Number(item.price).toLocaleString()}</p>
+        <p class="card-seller"><i data-feather="user"></i> ${item.seller || 'Unknown'}</p>
+        ${item.condition ? `<span class="card-condition">${conditionLabel[item.condition] || item.condition}</span>` : ''}
+        ${item.location  ? `<span class="card-location"><i data-feather="map-pin"></i> ${locationLabel[item.location] || item.location}</span>` : ''}
+        <div class="card-rating-row" id="rating-${id}"></div>
+        <div class="card-stats">
+          <span><i data-feather="eye"></i> ${item.views || 0}</span>
+          <span><i data-feather="heart"></i> ${item.likes || 0}</span>
+          ${isOwner ? `
+            <button class="card-sold-btn ${item.sold ? 'is-sold' : ''}" data-id="${id}" data-sold="${!!item.sold}" title="${item.sold ? 'Mark Available' : 'Mark Sold'}">
+              <i data-feather="${item.sold ? 'refresh-ccw' : 'check-circle'}"></i>
+            </button>
+            <button class="card-delete-btn" data-id="${id}">
+              <i data-feather="trash-2"></i>
+            </button>` : ''}
+        </div>
+      </div>
+    `;
+
+    fetchItemRating(id).then(rating => {
+      const ratingEl = document.getElementById(`rating-${id}`);
+      if (!ratingEl || !rating) return;
+      const stars = '★'.repeat(Math.round(rating.avg)) + '☆'.repeat(5 - Math.round(rating.avg));
+      ratingEl.innerHTML = `<span class="card-rating">${stars} <span style="color:#6b7280;font-weight:500">(${rating.count})</span></span>`;
+    });
+
+    const saveBtn = card.querySelector('.card-save-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (window.toggleFavorite) window.toggleFavorite(id, item);
+      });
+    }
+
+    if (isOwner) {
+      const soldBtn = card.querySelector('.card-sold-btn');
+      if (soldBtn) {
+        soldBtn.addEventListener('click', async e => {
+          e.stopPropagation();
+          const newSold = soldBtn.dataset.sold !== 'true';
+          await db.collection('items').doc(id).update({ sold: newSold });
+
+          if (newSold && window.notifyItemSold) {
+            try {
+              const reqSnap = await db.collection('requests')
+                .where('itemId','==',id)
+                .where('status','==','accepted').get();
+              reqSnap.forEach(doc => {
+                const req = doc.data();
+                window.notifyItemSold(req.buyerId, {
+                  itemTitle:  item.title,
+                  itemId:     id,
+                  sellerName: item.seller,
+                  sellerUid:  item.sellerUid,
+                });
+              });
+            } catch(e) {}
+          }
+        });
+      }
+      card.querySelector('.card-delete-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        deleteItem(id);
+      });
+    }
+
+    card.addEventListener('click', () => {
+      if (!isOwner) addView(id, item.views || 0);
+      if (window.openOverlay) window.openOverlay(item, id);
+    });
+
+    marketplace.appendChild(card);
+  });
+
+  feather.replace();
+}
+
+function loadItems() {
+  const marketplace    = document.getElementById('marketplace');
+  const loadingState   = document.getElementById('loadingState');
+  const emptyState     = document.getElementById('emptyState');
+  const noResultsState = document.getElementById('noResultsState');
+
+  if (!marketplace || !loadingState || !emptyState || !noResultsState) return;
+
   loadingState.classList.remove('hidden');
   emptyState.classList.add('hidden');
   noResultsState.classList.add('hidden');
   marketplace.innerHTML = '';
+
+  const cachedItems = getCachedItems();
+  if (!navigator.onLine && cachedItems.length) {
+    renderMarketplaceItems(cachedItems);
+    return;
+  }
 
   if (unsubscribeItems) unsubscribeItems();
 
   unsubscribeItems = db.collection('items')
     .orderBy('createdAt', 'desc')
     .onSnapshot(snapshot => {
-      loadingState.classList.add('hidden');
-      // Dismiss splash the moment items respond — don't wait for auth
-      if (typeof hideSplash === 'function') hideSplash();
-
       const allDocs = [];
       snapshot.forEach(doc => {
         const data = doc.data();
-        window.itemCache[doc.id] = data; // cache for inbox.js
+        window.itemCache[doc.id] = data;
         allDocs.push({ id: doc.id, data });
       });
 
-      const filtered = applyFilters(allDocs);
-
-      resultsCount.textContent = filtered.length === allDocs.length
-        ? `${allDocs.length} item${allDocs.length !== 1 ? 's' : ''}`
-        : `${filtered.length} of ${allDocs.length} items`;
-
-      marketplace.innerHTML = '';
-
-      if (allDocs.length === 0) {
-        emptyState.classList.remove('hidden');
-        noResultsState.classList.add('hidden');
-        resultsCount.textContent = '';
-        feather.replace();
-        return;
-      }
-      emptyState.classList.add('hidden');
-
-      if (filtered.length === 0) {
-        noResultsState.classList.remove('hidden');
-        feather.replace();
-        return;
-      }
-      noResultsState.classList.add('hidden');
-
-      filtered.forEach(({ id, data: item }, idx) => {
-        const isNew   = item.createdAt && typeof item.createdAt.toDate === 'function' && (Date.now() - item.createdAt.toDate()) < 86400000;
-        const isOwner = window.currentUser && window.currentUser.uid === item.sellerUid;
-        const isSaved = window.userFavorites && window.userFavorites.has(id);
-
-        const conditionLabel = { 'new':'✨ New','fairly-used':'👍 Fairly Used','used':'📦 Used' };
-        const locationLabel  = { 'main':'🏛️ Main','annex':'🏫 Annex','town':'🏙️ Town' };
-
-        const card = document.createElement('div');
-        card.className = 'item-card';
-        card.style.animationDelay = `${idx * 0.05}s`;
-
-        card.innerHTML = `
-          ${item.sold ? '<div class="card-sold-overlay">SOLD</div>' : ''}
-          ${buildCollage(item.imageUrls)}
-          ${!isOwner ? `
-            <button class="card-save-btn ${isSaved ? 'saved' : ''}" data-id="${id}" title="${isSaved ? 'Saved' : 'Save'}">
-              <i data-feather="bookmark"></i>
-            </button>
-          ` : ''}
-          <div class="card-info">
-            <div class="card-top-row">
-              <span class="card-badge">${catEmoji[item.category] || '📦'} ${item.category}</span>
-              ${isNew        ? '<span class="card-new">NEW</span>'  : ''}
-              ${item.boosted ? '<span class="card-boost">⚡</span>' : ''}
-              ${isOwner      ? '<span class="card-mine">Mine</span>' : ''}
-              ${item.sold    ? '<span class="card-sold-badge">SOLD</span>' : ''}
-            </div>
-            <h3>${item.title}</h3>
-            <p class="card-price ${item.sold ? 'card-price-sold' : ''}">₦${Number(item.price).toLocaleString()}</p>
-            <p class="card-seller"><i data-feather="user"></i> ${item.seller || 'Unknown'}</p>
-            ${item.condition ? `<span class="card-condition">${conditionLabel[item.condition] || item.condition}</span>` : ''}
-            ${item.location  ? `<span class="card-location"><i data-feather="map-pin"></i> ${locationLabel[item.location] || item.location}</span>` : ''}
-            <div class="card-rating-row" id="rating-${id}"></div>
-            <div class="card-stats">
-              <span><i data-feather="eye"></i> ${item.views || 0}</span>
-              <span><i data-feather="heart"></i> ${item.likes || 0}</span>
-              ${isOwner ? `
-                <button class="card-sold-btn ${item.sold ? 'is-sold' : ''}" data-id="${id}" data-sold="${!!item.sold}" title="${item.sold ? 'Mark Available' : 'Mark Sold'}">
-                  <i data-feather="${item.sold ? 'refresh-ccw' : 'check-circle'}"></i>
-                </button>
-                <button class="card-delete-btn" data-id="${id}">
-                  <i data-feather="trash-2"></i>
-                </button>` : ''}
-            </div>
-          </div>
-        `;
-
-        // Rating
-        fetchItemRating(id).then(rating => {
-          const ratingEl = document.getElementById(`rating-${id}`);
-          if (!ratingEl || !rating) return;
-          const stars = '★'.repeat(Math.round(rating.avg)) + '☆'.repeat(5 - Math.round(rating.avg));
-          ratingEl.innerHTML = `<span class="card-rating">${stars} <span style="color:#6b7280;font-weight:500">(${rating.count})</span></span>`;
-        });
-
-        // Save button
-        const saveBtn = card.querySelector('.card-save-btn');
-        if (saveBtn) {
-          saveBtn.addEventListener('click', e => {
-            e.stopPropagation();
-            if (window.toggleFavorite) window.toggleFavorite(id, item);
-          });
-        }
-
-        // Sold toggle
-        if (isOwner) {
-          const soldBtn = card.querySelector('.card-sold-btn');
-          if (soldBtn) {
-            soldBtn.addEventListener('click', async e => {
-              e.stopPropagation();
-              const newSold = soldBtn.dataset.sold !== 'true';
-              await db.collection('items').doc(id).update({ sold: newSold });
-
-              // Notify buyer if marking as sold
-              if (newSold && window.notifyItemSold) {
-                try {
-                  // Find accepted request for this item
-                  const reqSnap = await db.collection('requests')
-                    .where('itemId','==',id)
-                    .where('status','==','accepted').get();
-                  reqSnap.forEach(doc => {
-                    const req = doc.data();
-                    window.notifyItemSold(req.buyerId, {
-                      itemTitle:  item.title,
-                      itemId:     id,
-                      sellerName: item.seller,
-                      sellerUid:  item.sellerUid,
-                    });
-                  });
-                } catch(e) {}
-              }
-            });
-          }
-          card.querySelector('.card-delete-btn').addEventListener('click', e => {
-            e.stopPropagation();
-            deleteItem(id);
-          });
-        }
-
-        // Open overlay
-        card.addEventListener('click', () => {
-          if (!isOwner) addView(id, item.views || 0);
-          if (window.openOverlay) window.openOverlay(item, id);
-        });
-
-        marketplace.appendChild(card);
-      });
-
-      feather.replace();
-
+      saveItemsToCache(allDocs);
+      renderMarketplaceItems(allDocs);
     }, err => {
-      console.error('Firestore error:', err);
+      console.warn('Firestore error:', err);
+      if (cachedItems.length) {
+        renderMarketplaceItems(cachedItems);
+        return;
+      }
       loadingState.classList.add('hidden');
       emptyState.classList.remove('hidden');
       feather.replace();

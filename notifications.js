@@ -2,7 +2,7 @@
 // Depends on: firebase.js, app.js
 // Exposes: window.notify, window.startNotifListener
 
-const VAPID_KEY = ''; // Add from Firebase Console → Project Settings → Cloud Messaging when on Blaze
+const VAPID_KEY = 'BPR4Jj6Qf5qlnYpbZtJHWLpD0xj0YcjN2KwYP9tgxq1bj2yE9Gv4mD1zJwCMSA7tonY39sTjyaOV9rSoo5Ff9yM';
 
 // ══════════════════════════════════════════════════════
 // NOTIFICATION WRITERS
@@ -252,16 +252,50 @@ async function loadAnnouncementsTab() {
 
 window.initPush = async function() {
   if (!window.currentUser) return;
-  if (!('Notification' in window) || Notification.permission === 'denied') return;
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  if (Notification.permission === 'denied') return;
+  if (window.__pushInitInFlight) return;
+
+  window.__pushInitInFlight = true;
+
   try {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') return;
-    // Store permission granted flag — FCM token added when Blaze enabled
-    await db.collection('users').doc(window.currentUser.uid)
-      .update({ pushPermission:'granted' });
-    console.log('Push permission granted — ready for Blaze upgrade');
-  } catch(e) { console.warn('Push init:', e.message); }
+
+    const registration = await navigator.serviceWorker.ready;
+    const existingSubscription = await registration.pushManager.getSubscription();
+    if (existingSubscription) {
+      await existingSubscription.unsubscribe();
+    }
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_KEY)
+    });
+
+    await db.collection('users').doc(window.currentUser.uid).set({
+      pushPermission: 'granted',
+      pushSubscription: JSON.parse(JSON.stringify(subscription))
+    }, { merge: true });
+
+    console.log('Push enabled:', subscription.endpoint);
+  } catch (e) {
+    console.warn('Push init:', e.message);
+  } finally {
+    window.__pushInitInFlight = false;
+  }
 };
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 // ══════════════════════════════════════════════════════
 // DOM INIT

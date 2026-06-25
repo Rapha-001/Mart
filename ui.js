@@ -1317,6 +1317,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('navMenuB')?.addEventListener('click', openSidebar);
 
   // ── Seller nav ─────────────────────────────────────────
+  const offlineBanner = document.getElementById('offlineBanner');
+  const updateOfflineUi = () => {
+    if (offlineBanner) {
+      offlineBanner.classList.toggle('hidden', navigator.onLine);
+    }
+  };
+
+  updateOfflineUi();
+  window.addEventListener('online', updateOfflineUi);
+  window.addEventListener('offline', updateOfflineUi);
+  document.addEventListener('appOffline', updateOfflineUi);
+  document.addEventListener('appOnline', updateOfflineUi);
+
   document.getElementById('navMarket')?.addEventListener('click', () => {
     if (window.showPage) window.showPage('market');
     window.scrollTo({ top:0, behavior:'smooth' });
