@@ -11,6 +11,24 @@ body, html {
     overflow-x: hidden;
 }
 
+.offline-banner {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #1f2937;
+    color: #fff;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.offline-banner.hidden { display: none; }
+
+body.is-offline .offline-banner { display: flex; }
+
 /* ── Header ───────────────────────────────────────── */
 header {
     display: flex;

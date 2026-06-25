@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UniMart is offline</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+      color: #2e1065;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 360px;
+      width: 100%;
+      background: white;
+      border-radius: 24px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 16px 48px rgba(108, 0, 234, 0.16);
+    }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    p { line-height: 1.6; color: #6b7280; margin: 0 0 16px; }
+    .btn {
+      display: inline-block;
+      padding: 10px 16px;
+      background: linear-gradient(135deg, #6c00ea, #d400d4);
+      color: white;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>You’re offline</h1>
+    <p>UniMart is still available from your last cached view. Reconnect to refresh listings and messages.</p>
+    <a class="btn" href="./index.html">Try again</a>
+  </div>
+</body>
+</html>
