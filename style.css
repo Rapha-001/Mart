@@ -203,6 +203,9 @@ header {
     transition: transform 0.18s ease, box-shadow 0.18s ease;
     animation: fadeIn 0.35s ease both;
     opacity: 0;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }
 .item-card:active { transform: scale(0.97); box-shadow: 0 6px 20px rgba(108,0,234,0.18); }
 
@@ -233,6 +236,12 @@ header {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    min-height: 1px;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    will-change: transform;
+    background-attachment: scroll;
 }
 
 /* 1 image */
